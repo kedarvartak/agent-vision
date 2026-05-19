@@ -1,10 +1,12 @@
 import { AppError } from "./errors/app-error.js";
 import { ConsoleLogger } from "./logging/logger.js";
 import { ToolRegistry } from "./mcp/tool-registry.js";
+import { LocalOverlayAgent } from "./overlay/local-overlay-agent.js";
+import { CaptureSessionService } from "./session/capture-session-service.js";
 import { SessionManager, createMockCaptureBundle } from "./session/session-manager.js";
 import { SessionStore } from "./session/session-store.js";
 import { SessionWaiter } from "./session/session-waiter.js";
-import type { CaptureBundle, CaptureCommand } from "./types/capture.js";
+import type { CaptureBundle, CaptureCommand, SelectionBounds } from "./types/capture.js";
 
 const isCaptureCommand = (value: unknown): value is CaptureCommand =>
   value === "see" || value === "clip";
@@ -16,6 +18,27 @@ const readSessionId = (args: Record<string, unknown>): string => {
   }
 
   return sessionId;
+};
+
+const readOptionalNumber = (value: unknown, field: string): number | undefined => {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value !== "number" || Number.isNaN(value)) {
+    throw new AppError("INVALID_ARGUMENT", `${field} must be a number`);
+  }
+
+  return value;
+};
+
+const readRequiredNumber = (value: unknown, field: string): number => {
+  const parsed = readOptionalNumber(value, field);
+  if (parsed === undefined) {
+    throw new AppError("INVALID_ARGUMENT", `${field} is required`);
+  }
+
+  return parsed;
 };
 
 const readCaptureBundle = (args: Record<string, unknown>): CaptureBundle => {
@@ -36,11 +59,24 @@ const readErrorMessage = (args: Record<string, unknown>): string => {
   return errorMessage;
 };
 
+const readSelectionBounds = (args: Record<string, unknown>): SelectionBounds => ({
+  x: readRequiredNumber(args.x, "x"),
+  y: readRequiredNumber(args.y, "y"),
+  width: readRequiredNumber(args.width, "width"),
+  height: readRequiredNumber(args.height, "height")
+});
+
 export class VisualContextServer {
   public readonly logger = new ConsoleLogger("visual-context-server");
   private readonly sessionStore = new SessionStore();
   private readonly sessionManager = new SessionManager(this.sessionStore, this.logger);
   private readonly sessionWaiter = new SessionWaiter(this.sessionManager, this.logger);
+  private readonly captureSessions = new CaptureSessionService(
+    this.sessionManager,
+    this.sessionWaiter,
+    this.logger
+  );
+  private readonly overlayAgent = new LocalOverlayAgent(this.captureSessions, this.logger);
   private readonly tools = new ToolRegistry(this.logger);
 
   constructor() {
@@ -56,7 +92,7 @@ export class VisualContextServer {
   }
 
   start(): void {
-    this.logger.info("Phase 2 MCP session flow ready", {
+    this.logger.info("Phase 3 overlay-agent prototype ready", {
       tools: this.listTools().map((tool) => tool.name)
     });
   }
@@ -71,9 +107,8 @@ export class VisualContextServer {
           throw new AppError("INVALID_ARGUMENT", "command must be 'see' or 'clip'");
         }
 
-        const ttlMs = typeof args.ttlMs === "number" ? args.ttlMs : undefined;
-        const session = this.sessionManager.startSession({ command, ttlMs });
-        return this.sessionManager.activateSession(session.id);
+        const ttlMs = readOptionalNumber(args.ttlMs, "ttlMs");
+        return this.captureSessions.startSession({ command, ttlMs });
       }
     });
 
@@ -82,68 +117,128 @@ export class VisualContextServer {
       description: "Wait for a session to complete, cancel, fail, expire, or time out.",
       handler: (args) => {
         const sessionId = readSessionId(args);
-        const timeoutMs = typeof args.timeoutMs === "number" ? args.timeoutMs : undefined;
-        return this.sessionWaiter.awaitSession({ sessionId, timeoutMs });
+        const timeoutMs = readOptionalNumber(args.timeoutMs, "timeoutMs");
+        return this.captureSessions.awaitSession({ sessionId, timeoutMs });
       }
     });
 
     this.tools.register({
       name: "getCaptureSession",
       description: "Fetch the latest state for a capture session.",
-      handler: (args) => this.sessionManager.getSession(readSessionId(args))
+      handler: (args) => this.captureSessions.getSession(readSessionId(args))
     });
 
     this.tools.register({
       name: "listCaptureSessions",
       description: "List all in-memory capture sessions.",
-      handler: () => this.sessionManager.listSessions()
+      handler: () => this.captureSessions.listSessions()
     });
 
     this.tools.register({
       name: "completeCaptureSession",
       description: "Complete a session with a provided capture bundle.",
-      handler: (args) => {
-        const completed = this.sessionManager.completeSession({
+      handler: (args) =>
+        this.captureSessions.completeSession({
           sessionId: readSessionId(args),
           bundle: readCaptureBundle(args)
-        });
-        this.sessionWaiter.notify(completed);
-        return completed;
-      }
+        })
     });
 
     this.tools.register({
       name: "completeMockCaptureSession",
-      description: "Complete a session with a mock capture bundle for Phase 2 testing.",
+      description: "Complete a session with a mock capture bundle for Phase 3 testing.",
       handler: (args) => {
-        const session = this.sessionManager.getSession(readSessionId(args));
-        const completed = this.sessionManager.completeSession({
+        const session = this.captureSessions.getSession(readSessionId(args));
+        return this.captureSessions.completeSession({
           sessionId: session.id,
           bundle: createMockCaptureBundle(session.id, session.command)
         });
-        this.sessionWaiter.notify(completed);
-        return completed;
       }
     });
 
     this.tools.register({
       name: "cancelCaptureSession",
       description: "Cancel an active or created capture session.",
-      handler: (args) => {
-        const cancelled = this.sessionManager.cancelSession(readSessionId(args));
-        this.sessionWaiter.notify(cancelled);
-        return cancelled;
-      }
+      handler: (args) => this.captureSessions.cancelSession(readSessionId(args))
     });
 
     this.tools.register({
       name: "failCaptureSession",
       description: "Mark a session as failed with an error message.",
+      handler: (args) => this.captureSessions.failSession(readSessionId(args), readErrorMessage(args))
+    });
+
+    this.tools.register({
+      name: "launchOverlayCaptureSession",
+      description: "Launch the local overlay-agent prototype for a capture session.",
+      handler: (args) => this.overlayAgent.launch(readSessionId(args))
+    });
+
+    this.tools.register({
+      name: "getOverlayCaptureSession",
+      description: "Fetch the latest overlay-agent session state.",
+      handler: (args) => this.overlayAgent.get(readSessionId(args))
+    });
+
+    this.tools.register({
+      name: "listOverlayCaptureSessions",
+      description: "List all overlay-agent prototype sessions.",
+      handler: () => this.overlayAgent.list()
+    });
+
+    this.tools.register({
+      name: "selectOverlayRegion",
+      description: "Set the selected region for the overlay-agent prototype.",
       handler: (args) => {
-        const failed = this.sessionManager.failSession(readSessionId(args), readErrorMessage(args));
-        this.sessionWaiter.notify(failed);
-        return failed;
+        const bounds = readSelectionBounds(args);
+        return this.overlayAgent.selectRegion(readSessionId(args), {
+          ...bounds,
+          displayId: typeof args.displayId === "string" ? args.displayId : undefined,
+          activeAppName: typeof args.activeAppName === "string" ? args.activeAppName : undefined,
+          activeWindowTitle:
+            typeof args.activeWindowTitle === "string" ? args.activeWindowTitle : undefined
+        });
       }
+    });
+
+    this.tools.register({
+      name: "moveOverlaySelection",
+      description: "Move the current overlay selection by delta values.",
+      handler: (args) =>
+        this.overlayAgent.moveSelection(readSessionId(args), {
+          dx: readRequiredNumber(args.dx, "dx"),
+          dy: readRequiredNumber(args.dy, "dy")
+        })
+    });
+
+    this.tools.register({
+      name: "resizeOverlaySelection",
+      description: "Resize or reposition the current overlay selection.",
+      handler: (args) =>
+        this.overlayAgent.resizeSelection(readSessionId(args), {
+          x: readOptionalNumber(args.x, "x"),
+          y: readOptionalNumber(args.y, "y"),
+          width: readOptionalNumber(args.width, "width"),
+          height: readOptionalNumber(args.height, "height")
+        })
+    });
+
+    this.tools.register({
+      name: "sendOverlayCaptureSession",
+      description: "Send the current overlay selection back through the capture session flow.",
+      handler: (args) => this.overlayAgent.send(readSessionId(args))
+    });
+
+    this.tools.register({
+      name: "cancelOverlayCaptureSession",
+      description: "Cancel the overlay session and the backing capture session.",
+      handler: (args) => this.overlayAgent.cancel(readSessionId(args))
+    });
+
+    this.tools.register({
+      name: "failOverlayCaptureSession",
+      description: "Fail the overlay session and the backing capture session.",
+      handler: (args) => this.overlayAgent.fail(readSessionId(args), readErrorMessage(args))
     });
   }
 }
