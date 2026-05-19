@@ -28,3 +28,24 @@ export type CompleteCaptureSessionInput = {
   sessionId: string;
   bundle: CaptureBundle;
 };
+
+export type AwaitCaptureSessionInput = {
+  sessionId: string;
+  timeoutMs?: number;
+};
+
+export type AwaitCaptureSessionResult =
+  | {
+      outcome: "completed";
+      session: CaptureSession;
+      result: CaptureBundle;
+    }
+  | {
+      outcome: "cancelled" | "expired" | "failed";
+      session: CaptureSession;
+    }
+  | {
+      outcome: "timed_out";
+      session: CaptureSession;
+      waitedMs: number;
+    };

@@ -13,6 +13,13 @@ import { SessionStore } from "./session-store.js";
 
 const DEFAULT_SESSION_TTL_MS = 5 * 60 * 1000;
 
+const TERMINAL_STATUSES: ReadonlySet<CaptureSessionStatus> = new Set([
+  "completed",
+  "cancelled",
+  "expired",
+  "failed"
+]);
+
 export class SessionManager {
   constructor(
     private readonly store: SessionStore,
@@ -42,24 +49,18 @@ export class SessionManager {
   }
 
   activateSession(sessionId: string): CaptureSession {
-    return this.updateStatus(sessionId, "active");
+    const session = this.requireNonTerminalSession(sessionId);
+    return this.persistWithStatus(session, "active", "Activated capture session");
   }
 
   completeSession(input: CompleteCaptureSessionInput): CaptureSession {
-    const session = this.requireSession(input.sessionId);
-    this.assertNotExpired(session);
-
-    if (session.status === "cancelled" || session.status === "completed" || session.status === "failed") {
-      throw new AppError("SESSION_CONFLICT", "Session cannot be completed from its current state", {
-        sessionId: session.id,
-        status: session.status
-      });
-    }
+    const session = this.requireNonTerminalSession(input.sessionId);
 
     const updated = this.persist({
       ...session,
       status: "completed",
-      result: input.bundle
+      result: input.bundle,
+      errorMessage: undefined
     });
 
     this.logger.info("Completed capture session", {
@@ -78,20 +79,19 @@ export class SessionManager {
       });
     }
 
-    const updated = this.persist({
-      ...session,
-      status: "cancelled"
-    });
+    if (this.isTerminalStatus(session.status)) {
+      return session;
+    }
 
-    this.logger.info("Cancelled capture session", {
-      sessionId: updated.id
-    });
-
-    return updated;
+    return this.persistWithStatus(session, "cancelled", "Cancelled capture session");
   }
 
   failSession(sessionId: string, errorMessage: string): CaptureSession {
     const session = this.requireSession(sessionId);
+
+    if (this.isTerminalStatus(session.status)) {
+      return session;
+    }
 
     const updated = this.persist({
       ...session,
@@ -116,21 +116,22 @@ export class SessionManager {
     return this.store.list().map((session) => this.assertFresh(session));
   }
 
-  private updateStatus(sessionId: string, status: CaptureSessionStatus): CaptureSession {
+  isTerminalStatus(status: CaptureSessionStatus): boolean {
+    return TERMINAL_STATUSES.has(status);
+  }
+
+  private requireNonTerminalSession(sessionId: string): CaptureSession {
     const session = this.requireSession(sessionId);
     this.assertNotExpired(session);
 
-    const updated = this.persist({
-      ...session,
-      status
-    });
+    if (this.isTerminalStatus(session.status)) {
+      throw new AppError("SESSION_CONFLICT", "Session cannot transition from its current state", {
+        sessionId: session.id,
+        status: session.status
+      });
+    }
 
-    this.logger.debug("Updated session status", {
-      sessionId: updated.id,
-      status: updated.status
-    });
-
-    return updated;
+    return session;
   }
 
   private assertFresh(session: CaptureSession): CaptureSession {
@@ -162,6 +163,24 @@ export class SessionManager {
 
     this.logger.warn("Expired capture session", {
       sessionId: updated.id
+    });
+
+    return updated;
+  }
+
+  private persistWithStatus(
+    session: CaptureSession,
+    status: CaptureSessionStatus,
+    logMessage: string
+  ): CaptureSession {
+    const updated = this.persist({
+      ...session,
+      status
+    });
+
+    this.logger.debug(logMessage, {
+      sessionId: updated.id,
+      status: updated.status
     });
 
     return updated;
@@ -199,7 +218,7 @@ export const createMockCaptureBundle = (
   command,
   image: {
     mimeType: "image/png",
-    bytesBase64: "cGhhc2UxLW1vY2staW1hZ2U=",
+    bytesBase64: "cGhhc2UyLW1vY2staW1hZ2U=",
     width: 1280,
     height: 720
   },
@@ -221,7 +240,7 @@ export const createMockCaptureBundle = (
   ],
   context: {
     activeAppName: "Mock Browser",
-    activeWindowTitle: "Phase 1 Prototype",
+    activeWindowTitle: "Phase 2 Prototype",
     capturedAt: new Date().toISOString(),
     displayId: "display-1"
   }
