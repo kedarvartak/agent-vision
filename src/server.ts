@@ -124,6 +124,15 @@ const readOptionalAnnotationId = (args: Record<string, unknown>): string | undef
   return annotationId;
 };
 
+const readCleanupAgeMs = (args: Record<string, unknown>): number => {
+  const maxAgeMs = readRequiredNumber(args.maxAgeMs, "maxAgeMs");
+  if (maxAgeMs < 0) {
+    throw new AppError("INVALID_ARGUMENT", "maxAgeMs must be greater than or equal to zero");
+  }
+
+  return maxAgeMs;
+};
+
 export class VisualContextServer {
   public readonly logger = new ConsoleLogger("visual-context-server");
   private readonly sessionStore = new SessionStore();
@@ -160,7 +169,7 @@ export class VisualContextServer {
   }
 
   start(): void {
-    this.logger.info("Phase 6 end-to-end MCP integration ready", {
+    this.logger.info("Phase 7 hardening ready", {
       tools: this.listTools().map((tool) => tool.name)
     });
   }
@@ -182,6 +191,18 @@ export class VisualContextServer {
       name: "awaitVisualCaptureResult",
       description: "High-level wait for a final visual capture result with client-friendly guidance.",
       handler: (args) => this.visualFlow.awaitResult(readSessionId(args), readOptionalNumber(args.timeoutMs, "timeoutMs"))
+    });
+
+    this.tools.register({
+      name: "cleanupTerminalSessions",
+      description: "Reap terminal capture and overlay sessions older than the provided age.",
+      handler: (args) => {
+        const maxAgeMs = readCleanupAgeMs(args);
+        return {
+          capture: this.captureSessions.reapTerminalSessions(maxAgeMs),
+          overlay: this.overlayAgent.reapTerminalSessions(maxAgeMs)
+        };
+      }
     });
 
     this.tools.register({

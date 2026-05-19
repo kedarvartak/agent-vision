@@ -85,6 +85,22 @@ export class SessionWaiter {
     });
   }
 
+  clearSession(sessionId: string): void {
+    const pending = this.pendingWaits.get(sessionId);
+    if (!pending) {
+      return;
+    }
+
+    for (const wait of pending) {
+      clearTimeout(wait.timer);
+    }
+
+    this.pendingWaits.delete(sessionId);
+    this.logger.debug("Cleared capture session waits", {
+      sessionId
+    });
+  }
+
   private toTerminalOutcome(session: CaptureSession): AwaitCaptureSessionResult {
     if (session.status === "completed" && session.result) {
       return {

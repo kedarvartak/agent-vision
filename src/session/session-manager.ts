@@ -120,6 +120,34 @@ export class SessionManager {
     return TERMINAL_STATUSES.has(status);
   }
 
+  reapTerminalSessions(maxAgeMs: number): { removedSessionIds: string[] } {
+    const now = Date.now();
+    const removedSessionIds: string[] = [];
+
+    for (const session of this.listSessions()) {
+      if (!this.isTerminalStatus(session.status)) {
+        continue;
+      }
+
+      const updatedAtMs = Date.parse(session.updatedAt);
+      if (now - updatedAtMs < maxAgeMs) {
+        continue;
+      }
+
+      this.store.delete(session.id);
+      removedSessionIds.push(session.id);
+    }
+
+    if (removedSessionIds.length > 0) {
+      this.logger.info("Reaped terminal capture sessions", {
+        removedSessionIds,
+        maxAgeMs
+      });
+    }
+
+    return { removedSessionIds };
+  }
+
   private requireNonTerminalSession(sessionId: string): CaptureSession {
     const session = this.requireSession(sessionId);
     this.assertNotExpired(session);
@@ -218,9 +246,14 @@ export const createMockCaptureBundle = (
   command,
   image: {
     mimeType: "image/png",
-    bytesBase64: "cGhhc2UyLW1vY2staW1hZ2U=",
+    bytesBase64: "cGg3LW1vY2staW1hZ2U=",
     width: 1280,
-    height: 720
+    height: 720,
+    byteLength: 14,
+    sourceWidth: 1920,
+    sourceHeight: 1080,
+    backend: "mock-capture-bundle",
+    persisted: false
   },
   selection: {
     x: 120,
@@ -240,7 +273,7 @@ export const createMockCaptureBundle = (
   ],
   context: {
     activeAppName: "Mock Browser",
-    activeWindowTitle: "Phase 2 Prototype",
+    activeWindowTitle: "Phase 7 Prototype",
     capturedAt: new Date().toISOString(),
     displayId: "display-1"
   }

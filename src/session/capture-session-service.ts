@@ -51,6 +51,15 @@ export class CaptureSessionService {
     return failed;
   }
 
+  reapTerminalSessions(maxAgeMs: number): { removedSessionIds: string[] } {
+    const result = this.sessionManager.reapTerminalSessions(maxAgeMs);
+    for (const sessionId of result.removedSessionIds) {
+      this.sessionWaiter.clearSession(sessionId);
+    }
+
+    return result;
+  }
+
   logStateSummary(): void {
     this.logger.debug("Capture session service state", {
       sessions: this.listSessions().length

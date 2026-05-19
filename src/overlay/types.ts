@@ -6,7 +6,8 @@ export type OverlaySessionStatus =
   | "selected"
   | "sent"
   | "cancelled"
-  | "failed";
+  | "failed"
+  | "expired";
 
 export type OverlayTool = "select" | "rect" | "arrow" | "text" | "redact";
 

@@ -12,7 +12,7 @@ import type {
   TextAnnotation
 } from "../types/annotation.js";
 import type { SelectionBounds } from "../types/capture.js";
-import type { CaptureSession } from "../types/session.js";
+import type { CaptureSession, CaptureSessionStatus } from "../types/session.js";
 import type {
   CreateAnnotationInput,
   OverlayAnnotationRecord,
@@ -28,7 +28,8 @@ import type {
 const TERMINAL_STATUSES: ReadonlySet<OverlaySessionStatus> = new Set([
   "sent",
   "cancelled",
-  "failed"
+  "failed",
+  "expired"
 ]);
 
 const OVERLAY_SHORTCUTS: Record<OverlayTool, string> = {
@@ -37,6 +38,13 @@ const OVERLAY_SHORTCUTS: Record<OverlayTool, string> = {
   arrow: "A",
   text: "T",
   redact: "R"
+};
+
+const OVERLAY_TERMINAL_BY_CAPTURE_STATUS: Partial<Record<CaptureSessionStatus, OverlaySessionStatus>> = {
+  completed: "sent",
+  cancelled: "cancelled",
+  failed: "failed",
+  expired: "expired"
 };
 
 export class LocalOverlayAgent {
@@ -74,13 +82,13 @@ export class LocalOverlayAgent {
   }
 
   get(sessionId: string): OverlaySession {
-    return this.requireOverlaySession(sessionId);
+    return this.syncWithCaptureSession(this.requireOverlaySession(sessionId));
   }
 
   list(): OverlaySession[] {
-    return Array.from(this.overlaySessions.values()).sort((left, right) =>
-      left.createdAt.localeCompare(right.createdAt)
-    );
+    return Array.from(this.overlaySessions.values())
+      .map((session) => this.syncWithCaptureSession(session))
+      .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
   }
 
   setActiveTool(sessionId: string, tool: OverlayTool): OverlaySession {
@@ -247,39 +255,53 @@ export class LocalOverlayAgent {
 
   async send(sessionId: string): Promise<CaptureSession> {
     const overlaySession = this.requireSelectedOverlaySession(sessionId);
-    const bundle = await this.capturePipeline.createBundle({
-      sessionId,
-      command: overlaySession.command,
-      selection: overlaySession.selection as SelectionBounds,
-      annotations: overlaySession.annotations.map((entry) => entry.annotation),
-      context: overlaySession.context
-    });
 
-    const completed = this.captureSessions.completeSession({
-      sessionId,
-      bundle
-    });
+    try {
+      const bundle = await this.capturePipeline.createBundle({
+        sessionId,
+        command: overlaySession.command,
+        selection: overlaySession.selection as SelectionBounds,
+        annotations: overlaySession.annotations.map((entry) => entry.annotation),
+        context: overlaySession.context
+      });
 
-    this.persist({
-      ...overlaySession,
-      status: "sent"
-    });
+      const completed = this.captureSessions.completeSession({
+        sessionId,
+        bundle
+      });
 
-    this.logger.info("Sent overlay capture session", {
-      sessionId,
-      annotationCount: overlaySession.annotations.length,
-      backend: bundle.image.backend,
-      byteLength: bundle.image.byteLength
-    });
-    return completed;
+      this.persist({
+        ...overlaySession,
+        status: "sent",
+        errorMessage: undefined
+      });
+
+      this.logger.info("Sent overlay capture session", {
+        sessionId,
+        annotationCount: overlaySession.annotations.length,
+        backend: bundle.image.backend,
+        byteLength: bundle.image.byteLength
+      });
+      return completed;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const failed = this.fail(sessionId, `Overlay send failed: ${message}`);
+      throw new AppError("INTERNAL_ERROR", "Overlay capture send failed", {
+        sessionId,
+        cause: message,
+        resultingStatus: failed.status
+      });
+    }
   }
 
   cancel(sessionId: string): CaptureSession {
-    const overlaySession = this.requireOverlaySession(sessionId);
-    this.persist({
-      ...overlaySession,
-      status: "cancelled"
-    });
+    const overlaySession = this.syncWithCaptureSession(this.requireOverlaySession(sessionId));
+    if (!this.isTerminal(overlaySession.status)) {
+      this.persist({
+        ...overlaySession,
+        status: "cancelled"
+      });
+    }
 
     const cancelled = this.captureSessions.cancelSession(sessionId);
     this.logger.info("Cancelled overlay capture session", { sessionId });
@@ -287,16 +309,46 @@ export class LocalOverlayAgent {
   }
 
   fail(sessionId: string, errorMessage: string): CaptureSession {
-    const overlaySession = this.requireOverlaySession(sessionId);
-    this.persist({
-      ...overlaySession,
-      status: "failed",
-      errorMessage
-    });
+    const overlaySession = this.syncWithCaptureSession(this.requireOverlaySession(sessionId));
+    if (!this.isTerminal(overlaySession.status)) {
+      this.persist({
+        ...overlaySession,
+        status: "failed",
+        errorMessage
+      });
+    }
 
     const failed = this.captureSessions.failSession(sessionId, errorMessage);
     this.logger.error("Failed overlay capture session", { sessionId, errorMessage });
     return failed;
+  }
+
+  reapTerminalSessions(maxAgeMs: number): { removedSessionIds: string[] } {
+    const now = Date.now();
+    const removedSessionIds: string[] = [];
+
+    for (const session of this.list()) {
+      if (!this.isTerminal(session.status)) {
+        continue;
+      }
+
+      const updatedAtMs = Date.parse(session.updatedAt);
+      if (now - updatedAtMs < maxAgeMs) {
+        continue;
+      }
+
+      this.overlaySessions.delete(session.sessionId);
+      removedSessionIds.push(session.sessionId);
+    }
+
+    if (removedSessionIds.length > 0) {
+      this.logger.info("Reaped terminal overlay sessions", {
+        removedSessionIds,
+        maxAgeMs
+      });
+    }
+
+    return { removedSessionIds };
   }
 
   private requireSelectedOverlaySession(sessionId: string): OverlaySession {
@@ -311,7 +363,7 @@ export class LocalOverlayAgent {
   }
 
   private requireMutableOverlaySession(sessionId: string): OverlaySession {
-    const session = this.requireOverlaySession(sessionId);
+    const session = this.syncWithCaptureSession(this.requireOverlaySession(sessionId));
     if (this.isTerminal(session.status)) {
       throw new AppError("SESSION_CONFLICT", "Overlay session is no longer mutable", {
         sessionId,
@@ -329,6 +381,34 @@ export class LocalOverlayAgent {
     }
 
     return session;
+  }
+
+  private syncWithCaptureSession(session: OverlaySession): OverlaySession {
+    let captureSession: CaptureSession;
+    try {
+      captureSession = this.captureSessions.getSession(session.sessionId);
+    } catch (error) {
+      return session;
+    }
+
+    const mappedStatus = OVERLAY_TERMINAL_BY_CAPTURE_STATUS[captureSession.status];
+    if (!mappedStatus || session.status === mappedStatus) {
+      return session;
+    }
+
+    const updated = this.persist({
+      ...session,
+      status: mappedStatus,
+      errorMessage: captureSession.errorMessage ?? session.errorMessage
+    });
+
+    this.logger.debug("Synchronized overlay session with capture session", {
+      sessionId: session.sessionId,
+      captureStatus: captureSession.status,
+      overlayStatus: updated.status
+    });
+
+    return updated;
   }
 
   private persist(session: OverlaySession): OverlaySession {
