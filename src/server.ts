@@ -2,6 +2,7 @@ import { InMemoryCapturePipeline } from "./capture/in-memory-capture-pipeline.js
 import { InMemoryImageCompositor } from "./capture/in-memory-image-compositor.js";
 import { MockScreenCaptureProvider } from "./capture/mock-screen-capture-provider.js";
 import { AppError } from "./errors/app-error.js";
+import { VisualCaptureFlow } from "./flow/visual-capture-flow.js";
 import { ConsoleLogger } from "./logging/logger.js";
 import { ToolRegistry } from "./mcp/tool-registry.js";
 import { LocalOverlayAgent } from "./overlay/local-overlay-agent.js";
@@ -26,6 +27,15 @@ const readSessionId = (args: Record<string, unknown>): string => {
   }
 
   return sessionId;
+};
+
+const readCaptureCommand = (args: Record<string, unknown>): CaptureCommand => {
+  const command = args.command;
+  if (!isCaptureCommand(command)) {
+    throw new AppError("INVALID_ARGUMENT", "command must be 'see' or 'clip'");
+  }
+
+  return command;
 };
 
 const readOptionalNumber = (value: unknown, field: string): number | undefined => {
@@ -134,6 +144,7 @@ export class VisualContextServer {
     this.capturePipeline,
     this.logger
   );
+  private readonly visualFlow = new VisualCaptureFlow(this.captureSessions, this.overlayAgent);
   private readonly tools = new ToolRegistry(this.logger);
 
   constructor() {
@@ -149,34 +160,40 @@ export class VisualContextServer {
   }
 
   start(): void {
-    this.logger.info("Phase 5 capture pipeline ready", {
+    this.logger.info("Phase 6 end-to-end MCP integration ready", {
       tools: this.listTools().map((tool) => tool.name)
     });
   }
 
   private registerTools(): void {
     this.tools.register({
+      name: "beginVisualCapture",
+      description: "High-level entrypoint for /see or /clip that starts the capture and overlay flow.",
+      handler: (args) => this.visualFlow.begin(readCaptureCommand(args), readOptionalNumber(args.ttlMs, "ttlMs"))
+    });
+
+    this.tools.register({
+      name: "getVisualCaptureStatus",
+      description: "High-level combined status view for the capture and overlay flow.",
+      handler: (args) => this.visualFlow.getStatus(readSessionId(args))
+    });
+
+    this.tools.register({
+      name: "awaitVisualCaptureResult",
+      description: "High-level wait for a final visual capture result with client-friendly guidance.",
+      handler: (args) => this.visualFlow.awaitResult(readSessionId(args), readOptionalNumber(args.timeoutMs, "timeoutMs"))
+    });
+
+    this.tools.register({
       name: "startCaptureSession",
       description: "Create a new in-memory capture session and mark it active.",
-      handler: (args) => {
-        const command = args.command;
-        if (!isCaptureCommand(command)) {
-          throw new AppError("INVALID_ARGUMENT", "command must be 'see' or 'clip'");
-        }
-
-        const ttlMs = readOptionalNumber(args.ttlMs, "ttlMs");
-        return this.captureSessions.startSession({ command, ttlMs });
-      }
+      handler: (args) => this.captureSessions.startSession({ command: readCaptureCommand(args), ttlMs: readOptionalNumber(args.ttlMs, "ttlMs") })
     });
 
     this.tools.register({
       name: "awaitCaptureSession",
       description: "Wait for a session to complete, cancel, fail, expire, or time out.",
-      handler: (args) => {
-        const sessionId = readSessionId(args);
-        const timeoutMs = readOptionalNumber(args.timeoutMs, "timeoutMs");
-        return this.captureSessions.awaitSession({ sessionId, timeoutMs });
-      }
+      handler: (args) => this.captureSessions.awaitSession({ sessionId: readSessionId(args), timeoutMs: readOptionalNumber(args.timeoutMs, "timeoutMs") })
     });
 
     this.tools.register({
@@ -194,22 +211,15 @@ export class VisualContextServer {
     this.tools.register({
       name: "completeCaptureSession",
       description: "Complete a session with a provided capture bundle.",
-      handler: (args) =>
-        this.captureSessions.completeSession({
-          sessionId: readSessionId(args),
-          bundle: readCaptureBundle(args)
-        })
+      handler: (args) => this.captureSessions.completeSession({ sessionId: readSessionId(args), bundle: readCaptureBundle(args) })
     });
 
     this.tools.register({
       name: "completeMockCaptureSession",
-      description: "Complete a session with a mock capture bundle for Phase 5 testing.",
+      description: "Complete a session with a mock capture bundle for testing.",
       handler: (args) => {
         const session = this.captureSessions.getSession(readSessionId(args));
-        return this.captureSessions.completeSession({
-          sessionId: session.id,
-          bundle: createMockCaptureBundle(session.id, session.command)
-        });
+        return this.captureSessions.completeSession({ sessionId: session.id, bundle: createMockCaptureBundle(session.id, session.command) });
       }
     });
 
@@ -258,8 +268,7 @@ export class VisualContextServer {
           ...bounds,
           displayId: typeof args.displayId === "string" ? args.displayId : undefined,
           activeAppName: typeof args.activeAppName === "string" ? args.activeAppName : undefined,
-          activeWindowTitle:
-            typeof args.activeWindowTitle === "string" ? args.activeWindowTitle : undefined
+          activeWindowTitle: typeof args.activeWindowTitle === "string" ? args.activeWindowTitle : undefined
         });
       }
     });
@@ -267,50 +276,36 @@ export class VisualContextServer {
     this.tools.register({
       name: "moveOverlaySelection",
       description: "Move the current overlay selection by delta values.",
-      handler: (args) =>
-        this.overlayAgent.moveSelection(readSessionId(args), {
-          dx: readRequiredNumber(args.dx, "dx"),
-          dy: readRequiredNumber(args.dy, "dy")
-        })
+      handler: (args) => this.overlayAgent.moveSelection(readSessionId(args), { dx: readRequiredNumber(args.dx, "dx"), dy: readRequiredNumber(args.dy, "dy") })
     });
 
     this.tools.register({
       name: "resizeOverlaySelection",
       description: "Resize or reposition the current overlay selection.",
-      handler: (args) =>
-        this.overlayAgent.resizeSelection(readSessionId(args), {
-          x: readOptionalNumber(args.x, "x"),
-          y: readOptionalNumber(args.y, "y"),
-          width: readOptionalNumber(args.width, "width"),
-          height: readOptionalNumber(args.height, "height")
-        })
+      handler: (args) => this.overlayAgent.resizeSelection(readSessionId(args), {
+        x: readOptionalNumber(args.x, "x"),
+        y: readOptionalNumber(args.y, "y"),
+        width: readOptionalNumber(args.width, "width"),
+        height: readOptionalNumber(args.height, "height")
+      })
     });
 
     this.tools.register({
       name: "addOverlayAnnotation",
       description: "Add a rectangle, arrow, text, or redact annotation to the overlay session.",
-      handler: (args) =>
-        this.overlayAgent.addAnnotation(readSessionId(args), {
-          id: readOptionalAnnotationId(args),
-          annotation: readAnnotation(args)
-        })
+      handler: (args) => this.overlayAgent.addAnnotation(readSessionId(args), { id: readOptionalAnnotationId(args), annotation: readAnnotation(args) })
     });
 
     this.tools.register({
       name: "updateOverlayAnnotation",
       description: "Update an existing overlay annotation.",
-      handler: (args) =>
-        this.overlayAgent.updateAnnotation(readSessionId(args), {
-          annotationId: readAnnotationId(args),
-          annotation: readAnnotation(args)
-        })
+      handler: (args) => this.overlayAgent.updateAnnotation(readSessionId(args), { annotationId: readAnnotationId(args), annotation: readAnnotation(args) })
     });
 
     this.tools.register({
       name: "removeOverlayAnnotation",
       description: "Remove an existing overlay annotation.",
-      handler: (args) =>
-        this.overlayAgent.removeAnnotation(readSessionId(args), readAnnotationId(args))
+      handler: (args) => this.overlayAgent.removeAnnotation(readSessionId(args), readAnnotationId(args))
     });
 
     this.tools.register({
