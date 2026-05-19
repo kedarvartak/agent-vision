@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import type { CapturePipeline } from "../capture/capture-pipeline.js";
 import { AppError } from "../errors/app-error.js";
 import type { Logger } from "../logging/logger.js";
 import { CaptureSessionService } from "../session/capture-session-service.js";
@@ -12,7 +13,6 @@ import type {
 } from "../types/annotation.js";
 import type { SelectionBounds } from "../types/capture.js";
 import type { CaptureSession } from "../types/session.js";
-import { createOverlayCaptureBundle } from "./overlay-bundle-factory.js";
 import type {
   CreateAnnotationInput,
   OverlayAnnotationRecord,
@@ -44,6 +44,7 @@ export class LocalOverlayAgent {
 
   constructor(
     private readonly captureSessions: CaptureSessionService,
+    private readonly capturePipeline: CapturePipeline,
     private readonly logger: Logger
   ) {}
 
@@ -244,10 +245,15 @@ export class LocalOverlayAgent {
     return updated;
   }
 
-  send(sessionId: string): CaptureSession {
+  async send(sessionId: string): Promise<CaptureSession> {
     const overlaySession = this.requireSelectedOverlaySession(sessionId);
-    const captureSession = this.captureSessions.getSession(sessionId);
-    const bundle = createOverlayCaptureBundle(captureSession, overlaySession);
+    const bundle = await this.capturePipeline.createBundle({
+      sessionId,
+      command: overlaySession.command,
+      selection: overlaySession.selection as SelectionBounds,
+      annotations: overlaySession.annotations.map((entry) => entry.annotation),
+      context: overlaySession.context
+    });
 
     const completed = this.captureSessions.completeSession({
       sessionId,
@@ -261,7 +267,9 @@ export class LocalOverlayAgent {
 
     this.logger.info("Sent overlay capture session", {
       sessionId,
-      annotationCount: overlaySession.annotations.length
+      annotationCount: overlaySession.annotations.length,
+      backend: bundle.image.backend,
+      byteLength: bundle.image.byteLength
     });
     return completed;
   }

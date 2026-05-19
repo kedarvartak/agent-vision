@@ -33,13 +33,12 @@ const run = async (): Promise<void> => {
     displayId: "display-1"
   });
 
-  const toolState = await server.callTool("setOverlayActiveTool", {
+  await server.callTool("setOverlayActiveTool", {
     sessionId: session.id,
     tool: "rect"
   });
-  console.log("tool", JSON.stringify(toolState, null, 2));
 
-  const withRect = await server.callTool("addOverlayAnnotation", {
+  await server.callTool("addOverlayAnnotation", {
     sessionId: session.id,
     annotationId: "box-1",
     annotation: {
@@ -51,9 +50,8 @@ const run = async (): Promise<void> => {
       label: "Primary issue"
     }
   });
-  console.log("rect", JSON.stringify(withRect, null, 2));
 
-  const withArrow = await server.callTool("addOverlayAnnotation", {
+  await server.callTool("addOverlayAnnotation", {
     sessionId: session.id,
     annotation: {
       type: "arrow",
@@ -62,9 +60,8 @@ const run = async (): Promise<void> => {
       label: "Look here"
     }
   });
-  console.log("arrow", JSON.stringify(withArrow, null, 2));
 
-  const withText = await server.callTool("addOverlayAnnotation", {
+  await server.callTool("addOverlayAnnotation", {
     sessionId: session.id,
     annotationId: "text-1",
     annotation: {
@@ -74,7 +71,6 @@ const run = async (): Promise<void> => {
       text: "This area is failing"
     }
   });
-  console.log("text", JSON.stringify(withText, null, 2));
 
   await server.callTool("updateOverlayAnnotation", {
     sessionId: session.id,

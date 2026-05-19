@@ -14,6 +14,11 @@ export type CaptureImage = {
   bytesBase64: string;
   width: number;
   height: number;
+  byteLength: number;
+  sourceWidth: number;
+  sourceHeight: number;
+  backend: string;
+  persisted: false;
 };
 
 export type CaptureContext = {

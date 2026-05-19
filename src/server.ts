@@ -1,14 +1,17 @@
+import { InMemoryCapturePipeline } from "./capture/in-memory-capture-pipeline.js";
+import { InMemoryImageCompositor } from "./capture/in-memory-image-compositor.js";
+import { MockScreenCaptureProvider } from "./capture/mock-screen-capture-provider.js";
 import { AppError } from "./errors/app-error.js";
 import { ConsoleLogger } from "./logging/logger.js";
 import { ToolRegistry } from "./mcp/tool-registry.js";
 import { LocalOverlayAgent } from "./overlay/local-overlay-agent.js";
+import type { OverlayTool } from "./overlay/types.js";
 import { CaptureSessionService } from "./session/capture-session-service.js";
 import { SessionManager, createMockCaptureBundle } from "./session/session-manager.js";
 import { SessionStore } from "./session/session-store.js";
 import { SessionWaiter } from "./session/session-waiter.js";
 import type { Annotation } from "./types/annotation.js";
 import type { CaptureBundle, CaptureCommand, SelectionBounds } from "./types/capture.js";
-import type { OverlayTool } from "./overlay/types.js";
 
 const isCaptureCommand = (value: unknown): value is CaptureCommand =>
   value === "see" || value === "clip";
@@ -121,7 +124,16 @@ export class VisualContextServer {
     this.sessionWaiter,
     this.logger
   );
-  private readonly overlayAgent = new LocalOverlayAgent(this.captureSessions, this.logger);
+  private readonly capturePipeline = new InMemoryCapturePipeline(
+    new MockScreenCaptureProvider(),
+    new InMemoryImageCompositor(),
+    this.logger
+  );
+  private readonly overlayAgent = new LocalOverlayAgent(
+    this.captureSessions,
+    this.capturePipeline,
+    this.logger
+  );
   private readonly tools = new ToolRegistry(this.logger);
 
   constructor() {
@@ -137,7 +149,7 @@ export class VisualContextServer {
   }
 
   start(): void {
-    this.logger.info("Phase 4 annotation prototype ready", {
+    this.logger.info("Phase 5 capture pipeline ready", {
       tools: this.listTools().map((tool) => tool.name)
     });
   }
@@ -191,7 +203,7 @@ export class VisualContextServer {
 
     this.tools.register({
       name: "completeMockCaptureSession",
-      description: "Complete a session with a mock capture bundle for Phase 4 testing.",
+      description: "Complete a session with a mock capture bundle for Phase 5 testing.",
       handler: (args) => {
         const session = this.captureSessions.getSession(readSessionId(args));
         return this.captureSessions.completeSession({
@@ -310,7 +322,7 @@ export class VisualContextServer {
     this.tools.register({
       name: "sendOverlayCaptureSession",
       description: "Send the current overlay selection back through the capture session flow.",
-      handler: (args) => this.overlayAgent.send(readSessionId(args))
+      handler: async (args) => this.overlayAgent.send(readSessionId(args))
     });
 
     this.tools.register({
