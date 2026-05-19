@@ -6,10 +6,15 @@ import { CaptureSessionService } from "./session/capture-session-service.js";
 import { SessionManager, createMockCaptureBundle } from "./session/session-manager.js";
 import { SessionStore } from "./session/session-store.js";
 import { SessionWaiter } from "./session/session-waiter.js";
+import type { Annotation } from "./types/annotation.js";
 import type { CaptureBundle, CaptureCommand, SelectionBounds } from "./types/capture.js";
+import type { OverlayTool } from "./overlay/types.js";
 
 const isCaptureCommand = (value: unknown): value is CaptureCommand =>
   value === "see" || value === "clip";
+
+const isOverlayTool = (value: unknown): value is OverlayTool =>
+  value === "select" || value === "rect" || value === "arrow" || value === "text" || value === "redact";
 
 const readSessionId = (args: Record<string, unknown>): string => {
   const sessionId = args.sessionId;
@@ -66,6 +71,46 @@ const readSelectionBounds = (args: Record<string, unknown>): SelectionBounds => 
   height: readRequiredNumber(args.height, "height")
 });
 
+const readOverlayTool = (args: Record<string, unknown>): OverlayTool => {
+  const tool = args.tool;
+  if (!isOverlayTool(tool)) {
+    throw new AppError("INVALID_ARGUMENT", "tool must be one of select, rect, arrow, text, redact");
+  }
+
+  return tool;
+};
+
+const readAnnotation = (args: Record<string, unknown>): Annotation => {
+  const annotation = args.annotation;
+  if (!annotation || typeof annotation !== "object") {
+    throw new AppError("INVALID_ARGUMENT", "annotation must be an object");
+  }
+
+  return annotation as Annotation;
+};
+
+const readAnnotationId = (args: Record<string, unknown>): string => {
+  const annotationId = args.annotationId;
+  if (typeof annotationId !== "string" || annotationId.trim() === "") {
+    throw new AppError("INVALID_ARGUMENT", "annotationId must be a non-empty string");
+  }
+
+  return annotationId;
+};
+
+const readOptionalAnnotationId = (args: Record<string, unknown>): string | undefined => {
+  const annotationId = args.annotationId;
+  if (annotationId === undefined) {
+    return undefined;
+  }
+
+  if (typeof annotationId !== "string" || annotationId.trim() === "") {
+    throw new AppError("INVALID_ARGUMENT", "annotationId must be a non-empty string");
+  }
+
+  return annotationId;
+};
+
 export class VisualContextServer {
   public readonly logger = new ConsoleLogger("visual-context-server");
   private readonly sessionStore = new SessionStore();
@@ -92,7 +137,7 @@ export class VisualContextServer {
   }
 
   start(): void {
-    this.logger.info("Phase 3 overlay-agent prototype ready", {
+    this.logger.info("Phase 4 annotation prototype ready", {
       tools: this.listTools().map((tool) => tool.name)
     });
   }
@@ -146,7 +191,7 @@ export class VisualContextServer {
 
     this.tools.register({
       name: "completeMockCaptureSession",
-      description: "Complete a session with a mock capture bundle for Phase 3 testing.",
+      description: "Complete a session with a mock capture bundle for Phase 4 testing.",
       handler: (args) => {
         const session = this.captureSessions.getSession(readSessionId(args));
         return this.captureSessions.completeSession({
@@ -187,6 +232,12 @@ export class VisualContextServer {
     });
 
     this.tools.register({
+      name: "setOverlayActiveTool",
+      description: "Set the current overlay annotation tool.",
+      handler: (args) => this.overlayAgent.setActiveTool(readSessionId(args), readOverlayTool(args))
+    });
+
+    this.tools.register({
       name: "selectOverlayRegion",
       description: "Set the selected region for the overlay-agent prototype.",
       handler: (args) => {
@@ -221,6 +272,39 @@ export class VisualContextServer {
           width: readOptionalNumber(args.width, "width"),
           height: readOptionalNumber(args.height, "height")
         })
+    });
+
+    this.tools.register({
+      name: "addOverlayAnnotation",
+      description: "Add a rectangle, arrow, text, or redact annotation to the overlay session.",
+      handler: (args) =>
+        this.overlayAgent.addAnnotation(readSessionId(args), {
+          id: readOptionalAnnotationId(args),
+          annotation: readAnnotation(args)
+        })
+    });
+
+    this.tools.register({
+      name: "updateOverlayAnnotation",
+      description: "Update an existing overlay annotation.",
+      handler: (args) =>
+        this.overlayAgent.updateAnnotation(readSessionId(args), {
+          annotationId: readAnnotationId(args),
+          annotation: readAnnotation(args)
+        })
+    });
+
+    this.tools.register({
+      name: "removeOverlayAnnotation",
+      description: "Remove an existing overlay annotation.",
+      handler: (args) =>
+        this.overlayAgent.removeAnnotation(readSessionId(args), readAnnotationId(args))
+    });
+
+    this.tools.register({
+      name: "clearOverlayAnnotations",
+      description: "Clear all overlay annotations for the current session.",
+      handler: (args) => this.overlayAgent.clearAnnotations(readSessionId(args))
     });
 
     this.tools.register({

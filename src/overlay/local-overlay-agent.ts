@@ -1,15 +1,28 @@
+import { randomUUID } from "node:crypto";
+
 import { AppError } from "../errors/app-error.js";
 import type { Logger } from "../logging/logger.js";
 import { CaptureSessionService } from "../session/capture-session-service.js";
+import type {
+  Annotation,
+  ArrowAnnotation,
+  RedactAnnotation,
+  RectangleAnnotation,
+  TextAnnotation
+} from "../types/annotation.js";
 import type { SelectionBounds } from "../types/capture.js";
 import type { CaptureSession } from "../types/session.js";
 import { createOverlayCaptureBundle } from "./overlay-bundle-factory.js";
 import type {
+  CreateAnnotationInput,
+  OverlayAnnotationRecord,
   OverlayMoveInput,
   OverlayRegionInput,
   OverlayResizeInput,
   OverlaySession,
-  OverlaySessionStatus
+  OverlaySessionStatus,
+  OverlayTool,
+  UpdateAnnotationInput
 } from "./types.js";
 
 const TERMINAL_STATUSES: ReadonlySet<OverlaySessionStatus> = new Set([
@@ -17,6 +30,14 @@ const TERMINAL_STATUSES: ReadonlySet<OverlaySessionStatus> = new Set([
   "cancelled",
   "failed"
 ]);
+
+const OVERLAY_SHORTCUTS: Record<OverlayTool, string> = {
+  select: "V",
+  rect: "B",
+  arrow: "A",
+  text: "T",
+  redact: "R"
+};
 
 export class LocalOverlayAgent {
   private readonly overlaySessions = new Map<string, OverlaySession>();
@@ -40,7 +61,10 @@ export class LocalOverlayAgent {
       command: captureSession.command,
       status: "armed",
       createdAt: now,
-      updatedAt: now
+      updatedAt: now,
+      activeTool: "select",
+      annotations: [],
+      shortcuts: OVERLAY_SHORTCUTS
     };
 
     this.overlaySessions.set(sessionId, overlaySession);
@@ -56,6 +80,17 @@ export class LocalOverlayAgent {
     return Array.from(this.overlaySessions.values()).sort((left, right) =>
       left.createdAt.localeCompare(right.createdAt)
     );
+  }
+
+  setActiveTool(sessionId: string, tool: OverlayTool): OverlaySession {
+    const session = this.requireMutableOverlaySession(sessionId);
+    const updated = this.persist({
+      ...session,
+      activeTool: tool
+    });
+
+    this.logger.debug("Set overlay active tool", { sessionId, tool });
+    return updated;
   }
 
   selectRegion(sessionId: string, input: OverlayRegionInput): OverlaySession {
@@ -121,6 +156,94 @@ export class LocalOverlayAgent {
     return updated;
   }
 
+  addAnnotation(sessionId: string, input: CreateAnnotationInput): OverlaySession {
+    const session = this.requireSelectedOverlaySession(sessionId);
+    this.assertAnnotation(input.annotation);
+
+    const now = new Date().toISOString();
+    const record: OverlayAnnotationRecord = {
+      id: input.id ?? randomUUID(),
+      annotation: input.annotation,
+      createdAt: now,
+      updatedAt: now
+    };
+
+    const updated = this.persist({
+      ...session,
+      annotations: [...session.annotations, record]
+    });
+
+    this.logger.debug("Added overlay annotation", {
+      sessionId,
+      annotationId: record.id,
+      annotationType: record.annotation.type
+    });
+    return updated;
+  }
+
+  updateAnnotation(sessionId: string, input: UpdateAnnotationInput): OverlaySession {
+    const session = this.requireSelectedOverlaySession(sessionId);
+    this.assertAnnotation(input.annotation);
+
+    const existing = session.annotations.find((annotation) => annotation.id === input.annotationId);
+    if (!existing) {
+      throw new AppError("NOT_FOUND", "Overlay annotation not found", {
+        sessionId,
+        annotationId: input.annotationId
+      });
+    }
+
+    const updated = this.persist({
+      ...session,
+      annotations: session.annotations.map((record) =>
+        record.id === input.annotationId
+          ? {
+              ...record,
+              annotation: input.annotation,
+              updatedAt: new Date().toISOString()
+            }
+          : record
+      )
+    });
+
+    this.logger.debug("Updated overlay annotation", {
+      sessionId,
+      annotationId: input.annotationId,
+      annotationType: input.annotation.type
+    });
+    return updated;
+  }
+
+  removeAnnotation(sessionId: string, annotationId: string): OverlaySession {
+    const session = this.requireSelectedOverlaySession(sessionId);
+    const annotationExists = session.annotations.some((record) => record.id === annotationId);
+    if (!annotationExists) {
+      throw new AppError("NOT_FOUND", "Overlay annotation not found", {
+        sessionId,
+        annotationId
+      });
+    }
+
+    const updated = this.persist({
+      ...session,
+      annotations: session.annotations.filter((record) => record.id !== annotationId)
+    });
+
+    this.logger.debug("Removed overlay annotation", { sessionId, annotationId });
+    return updated;
+  }
+
+  clearAnnotations(sessionId: string): OverlaySession {
+    const session = this.requireSelectedOverlaySession(sessionId);
+    const updated = this.persist({
+      ...session,
+      annotations: []
+    });
+
+    this.logger.debug("Cleared overlay annotations", { sessionId });
+    return updated;
+  }
+
   send(sessionId: string): CaptureSession {
     const overlaySession = this.requireSelectedOverlaySession(sessionId);
     const captureSession = this.captureSessions.getSession(sessionId);
@@ -136,7 +259,10 @@ export class LocalOverlayAgent {
       status: "sent"
     });
 
-    this.logger.info("Sent overlay capture session", { sessionId });
+    this.logger.info("Sent overlay capture session", {
+      sessionId,
+      annotationCount: overlaySession.annotations.length
+    });
     return completed;
   }
 
@@ -211,6 +337,57 @@ export class LocalOverlayAgent {
     if (bounds.width <= 0 || bounds.height <= 0) {
       throw new AppError("INVALID_ARGUMENT", "Selection width and height must be greater than zero", {
         bounds
+      });
+    }
+  }
+
+  private assertAnnotation(annotation: Annotation): void {
+    switch (annotation.type) {
+      case "rect":
+        this.assertBoxAnnotation(annotation);
+        return;
+      case "redact":
+        this.assertRedactAnnotation(annotation);
+        return;
+      case "arrow":
+        this.assertArrowAnnotation(annotation);
+        return;
+      case "text":
+        this.assertTextAnnotation(annotation);
+        return;
+      default:
+        throw new AppError("INVALID_ARGUMENT", "Unsupported annotation type", {
+          annotation
+        });
+    }
+  }
+
+  private assertBoxAnnotation(annotation: RectangleAnnotation): void {
+    this.assertValidBounds(annotation);
+  }
+
+  private assertRedactAnnotation(annotation: RedactAnnotation): void {
+    this.assertValidBounds(annotation);
+  }
+
+  private assertArrowAnnotation(annotation: ArrowAnnotation): void {
+    if (Number.isNaN(annotation.from.x) || Number.isNaN(annotation.from.y)) {
+      throw new AppError("INVALID_ARGUMENT", "Arrow annotation start point must be numeric", {
+        annotation
+      });
+    }
+
+    if (Number.isNaN(annotation.to.x) || Number.isNaN(annotation.to.y)) {
+      throw new AppError("INVALID_ARGUMENT", "Arrow annotation end point must be numeric", {
+        annotation
+      });
+    }
+  }
+
+  private assertTextAnnotation(annotation: TextAnnotation): void {
+    if (annotation.text.trim() === "") {
+      throw new AppError("INVALID_ARGUMENT", "Text annotation must include non-empty text", {
+        annotation
       });
     }
   }

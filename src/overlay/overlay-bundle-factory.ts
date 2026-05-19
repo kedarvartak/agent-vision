@@ -17,12 +17,12 @@ export const createOverlayCaptureBundle = (
     command: session.command,
     image: {
       mimeType: "image/png",
-      bytesBase64: "cGgzLW92ZXJsYXktcHJvdG90eXBlLWltYWdl",
+      bytesBase64: "cGg0LW92ZXJsYXktYW5ub3RhdGVkLWltYWdl",
       width: Math.max(selection.width, 1),
       height: Math.max(selection.height, 1)
     },
     selection,
-    annotations: [],
+    annotations: overlaySession.annotations.map((entry) => entry.annotation),
     context: {
       activeAppName: overlaySession.context?.activeAppName ?? "Prototype App",
       activeWindowTitle: overlaySession.context?.activeWindowTitle ?? "Overlay Prototype Window",

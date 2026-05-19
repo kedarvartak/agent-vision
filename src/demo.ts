@@ -21,34 +21,71 @@ const run = async (): Promise<void> => {
     timeoutMs: 5_000
   });
 
-  const overlay = await server.callTool("launchOverlayCaptureSession", { sessionId: session.id });
-  console.log("overlay-armed", JSON.stringify(overlay, null, 2));
-
-  const selected = await server.callTool("selectOverlayRegion", {
+  await server.callTool("launchOverlayCaptureSession", { sessionId: session.id });
+  await server.callTool("selectOverlayRegion", {
     sessionId: session.id,
     x: 120,
     y: 96,
     width: 640,
     height: 360,
     activeAppName: "Prototype Browser",
-    activeWindowTitle: "Overlay Flow Demo",
+    activeWindowTitle: "Overlay Annotation Demo",
     displayId: "display-1"
   });
-  console.log("selected", JSON.stringify(selected, null, 2));
 
-  const moved = await server.callTool("moveOverlaySelection", {
+  const toolState = await server.callTool("setOverlayActiveTool", {
     sessionId: session.id,
-    dx: 24,
-    dy: 12
+    tool: "rect"
   });
-  console.log("moved", JSON.stringify(moved, null, 2));
+  console.log("tool", JSON.stringify(toolState, null, 2));
 
-  const resized = await server.callTool("resizeOverlaySelection", {
+  const withRect = await server.callTool("addOverlayAnnotation", {
     sessionId: session.id,
-    width: 700,
-    height: 400
+    annotationId: "box-1",
+    annotation: {
+      type: "rect",
+      x: 140,
+      y: 120,
+      width: 300,
+      height: 120,
+      label: "Primary issue"
+    }
   });
-  console.log("resized", JSON.stringify(resized, null, 2));
+  console.log("rect", JSON.stringify(withRect, null, 2));
+
+  const withArrow = await server.callTool("addOverlayAnnotation", {
+    sessionId: session.id,
+    annotation: {
+      type: "arrow",
+      from: { x: 90, y: 90 },
+      to: { x: 200, y: 160 },
+      label: "Look here"
+    }
+  });
+  console.log("arrow", JSON.stringify(withArrow, null, 2));
+
+  const withText = await server.callTool("addOverlayAnnotation", {
+    sessionId: session.id,
+    annotationId: "text-1",
+    annotation: {
+      type: "text",
+      x: 160,
+      y: 260,
+      text: "This area is failing"
+    }
+  });
+  console.log("text", JSON.stringify(withText, null, 2));
+
+  await server.callTool("updateOverlayAnnotation", {
+    sessionId: session.id,
+    annotationId: "text-1",
+    annotation: {
+      type: "text",
+      x: 160,
+      y: 260,
+      text: "This area is failing after submit"
+    }
+  });
 
   const completed = await server.callTool("sendOverlayCaptureSession", { sessionId: session.id });
   console.log("completed", JSON.stringify(completed, null, 2));
