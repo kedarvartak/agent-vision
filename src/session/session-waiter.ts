@@ -110,10 +110,14 @@ export class SessionWaiter {
       };
     }
 
-    return {
-      outcome: session.status,
-      session
-    };
+    if (session.status === "cancelled" || session.status === "expired" || session.status === "failed") {
+      return {
+        outcome: session.status,
+        session
+      };
+    }
+
+    throw new Error(`Expected terminal capture session status, received ${session.status}`);
   }
 
   private removeWait(sessionId: string, pendingWait: PendingWait): void {

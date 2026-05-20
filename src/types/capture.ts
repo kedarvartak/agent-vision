@@ -26,6 +26,10 @@ export type CaptureContext = {
   activeWindowTitle?: string;
   capturedAt: string;
   displayId?: string;
+  browserName?: string;
+  browserTabId?: string;
+  browserTabTitle?: string;
+  browserTabUrl?: string;
 };
 
 export type CaptureBundle = {

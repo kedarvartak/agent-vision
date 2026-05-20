@@ -1,33 +1,40 @@
-import { InMemoryCapturePipeline } from "./capture/in-memory-capture-pipeline.js";
-import { InMemoryImageCompositor } from "./capture/in-memory-image-compositor.js";
-import { MockScreenCaptureProvider } from "./capture/mock-screen-capture-provider.js";
+import { BrowserTabRegistry } from "./browser/browser-tab-registry.js";
+import { BrowserVisualCaptureService } from "./browser/browser-visual-capture-service.js";
+import type { UpsertBrowserTabSnapshotInput } from "./browser/types.js";
 import { AppError } from "./errors/app-error.js";
-import { VisualCaptureFlow } from "./flow/visual-capture-flow.js";
 import { ConsoleLogger } from "./logging/logger.js";
 import { ToolRegistry } from "./mcp/tool-registry.js";
-import { LocalOverlayAgent } from "./overlay/local-overlay-agent.js";
-import type { OverlayTool } from "./overlay/types.js";
 import { CaptureSessionService } from "./session/capture-session-service.js";
-import { SessionManager, createMockCaptureBundle } from "./session/session-manager.js";
+import { SessionManager } from "./session/session-manager.js";
 import { SessionStore } from "./session/session-store.js";
 import { SessionWaiter } from "./session/session-waiter.js";
-import type { Annotation } from "./types/annotation.js";
-import type { CaptureBundle, CaptureCommand, SelectionBounds } from "./types/capture.js";
+import type { CaptureBundle, CaptureCommand } from "./types/capture.js";
 
 const isCaptureCommand = (value: unknown): value is CaptureCommand =>
   value === "see" || value === "clip";
 
-const isOverlayTool = (value: unknown): value is OverlayTool =>
-  value === "select" || value === "rect" || value === "arrow" || value === "text" || value === "redact";
-
-const readSessionId = (args: Record<string, unknown>): string => {
-  const sessionId = args.sessionId;
-  if (typeof sessionId !== "string") {
-    throw new AppError("INVALID_ARGUMENT", "sessionId must be a string");
+const readRequiredStringField = (args: Record<string, unknown>, field: string): string => {
+  const value = args[field];
+  if (typeof value !== "string" || value.trim() === "") {
+    throw new AppError("INVALID_ARGUMENT", `${field} must be a non-empty string`);
   }
 
-  return sessionId;
+  return value;
 };
+
+const readOptionalString = (value: unknown, field: string): string | undefined => {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value !== "string") {
+    throw new AppError("INVALID_ARGUMENT", `${field} must be a string`);
+  }
+
+  return value;
+};
+
+const readSessionId = (args: Record<string, unknown>): string => readRequiredStringField(args, "sessionId");
 
 const readCaptureCommand = (args: Record<string, unknown>): CaptureCommand => {
   const command = args.command;
@@ -50,15 +57,6 @@ const readOptionalNumber = (value: unknown, field: string): number | undefined =
   return value;
 };
 
-const readRequiredNumber = (value: unknown, field: string): number => {
-  const parsed = readOptionalNumber(value, field);
-  if (parsed === undefined) {
-    throw new AppError("INVALID_ARGUMENT", `${field} is required`);
-  }
-
-  return parsed;
-};
-
 const readCaptureBundle = (args: Record<string, unknown>): CaptureBundle => {
   const bundle = args.bundle;
   if (!bundle || typeof bundle !== "object") {
@@ -68,69 +66,63 @@ const readCaptureBundle = (args: Record<string, unknown>): CaptureBundle => {
   return bundle as CaptureBundle;
 };
 
-const readErrorMessage = (args: Record<string, unknown>): string => {
-  const errorMessage = args.errorMessage;
-  if (typeof errorMessage !== "string" || errorMessage.trim() === "") {
-    throw new AppError("INVALID_ARGUMENT", "errorMessage must be a non-empty string");
-  }
-
-  return errorMessage;
-};
-
-const readSelectionBounds = (args: Record<string, unknown>): SelectionBounds => ({
-  x: readRequiredNumber(args.x, "x"),
-  y: readRequiredNumber(args.y, "y"),
-  width: readRequiredNumber(args.width, "width"),
-  height: readRequiredNumber(args.height, "height")
-});
-
-const readOverlayTool = (args: Record<string, unknown>): OverlayTool => {
-  const tool = args.tool;
-  if (!isOverlayTool(tool)) {
-    throw new AppError("INVALID_ARGUMENT", "tool must be one of select, rect, arrow, text, redact");
-  }
-
-  return tool;
-};
-
-const readAnnotation = (args: Record<string, unknown>): Annotation => {
-  const annotation = args.annotation;
-  if (!annotation || typeof annotation !== "object") {
-    throw new AppError("INVALID_ARGUMENT", "annotation must be an object");
-  }
-
-  return annotation as Annotation;
-};
-
-const readAnnotationId = (args: Record<string, unknown>): string => {
-  const annotationId = args.annotationId;
-  if (typeof annotationId !== "string" || annotationId.trim() === "") {
-    throw new AppError("INVALID_ARGUMENT", "annotationId must be a non-empty string");
-  }
-
-  return annotationId;
-};
-
-const readOptionalAnnotationId = (args: Record<string, unknown>): string | undefined => {
-  const annotationId = args.annotationId;
-  if (annotationId === undefined) {
-    return undefined;
-  }
-
-  if (typeof annotationId !== "string" || annotationId.trim() === "") {
-    throw new AppError("INVALID_ARGUMENT", "annotationId must be a non-empty string");
-  }
-
-  return annotationId;
-};
+const readErrorMessage = (args: Record<string, unknown>): string => readRequiredStringField(args, "errorMessage");
 
 const readCleanupAgeMs = (args: Record<string, unknown>): number => {
-  const maxAgeMs = readRequiredNumber(args.maxAgeMs, "maxAgeMs");
+  const maxAgeMs = readOptionalNumber(args.maxAgeMs, "maxAgeMs");
+  if (maxAgeMs === undefined) {
+    throw new AppError("INVALID_ARGUMENT", "maxAgeMs is required");
+  }
+
   if (maxAgeMs < 0) {
     throw new AppError("INVALID_ARGUMENT", "maxAgeMs must be greater than or equal to zero");
   }
 
   return maxAgeMs;
+};
+
+const readBrowserTabSnapshotInput = (args: Record<string, unknown>): UpsertBrowserTabSnapshotInput => {
+  const image = args.image;
+  if (!image || typeof image !== "object") {
+    throw new AppError("INVALID_ARGUMENT", "image must be an object");
+  }
+
+  const typedImage = image as Record<string, unknown>;
+  const bytesBase64 = typedImage.bytesBase64;
+  const width = typedImage.width;
+  const height = typedImage.height;
+  const mimeType = typedImage.mimeType;
+
+  if (typeof bytesBase64 !== "string" || bytesBase64.trim() === "") {
+    throw new AppError("INVALID_ARGUMENT", "image.bytesBase64 must be a non-empty string");
+  }
+
+  if (typeof width !== "number" || Number.isNaN(width)) {
+    throw new AppError("INVALID_ARGUMENT", "image.width must be a number");
+  }
+
+  if (typeof height !== "number" || Number.isNaN(height)) {
+    throw new AppError("INVALID_ARGUMENT", "image.height must be a number");
+  }
+
+  if (mimeType !== undefined && mimeType !== "image/png") {
+    throw new AppError("INVALID_ARGUMENT", "image.mimeType must be image/png when provided");
+  }
+
+  return {
+    tabId: readRequiredStringField(args, "tabId"),
+    title: readRequiredStringField(args, "title"),
+    url: readOptionalString(args.url, "url"),
+    browserName: readOptionalString(args.browserName, "browserName"),
+    active: typeof args.active === "boolean" ? args.active : undefined,
+    capturedAt: readOptionalString(args.capturedAt, "capturedAt"),
+    image: {
+      mimeType: mimeType as "image/png" | undefined,
+      bytesBase64,
+      width,
+      height
+    }
+  };
 };
 
 export class VisualContextServer {
@@ -143,17 +135,12 @@ export class VisualContextServer {
     this.sessionWaiter,
     this.logger
   );
-  private readonly capturePipeline = new InMemoryCapturePipeline(
-    new MockScreenCaptureProvider(),
-    new InMemoryImageCompositor(),
-    this.logger
-  );
-  private readonly overlayAgent = new LocalOverlayAgent(
+  private readonly browserTabs = new BrowserTabRegistry();
+  private readonly browserCapture = new BrowserVisualCaptureService(
+    this.browserTabs,
     this.captureSessions,
-    this.capturePipeline,
     this.logger
   );
-  private readonly visualFlow = new VisualCaptureFlow(this.captureSessions, this.overlayAgent);
   private readonly tools = new ToolRegistry(this.logger);
 
   constructor() {
@@ -169,52 +156,38 @@ export class VisualContextServer {
   }
 
   start(): void {
-    this.logger.info("Phase 7 hardening ready", {
+    this.logger.info("Browser-first visual context server ready", {
       tools: this.listTools().map((tool) => tool.name)
     });
   }
 
   private registerTools(): void {
     this.tools.register({
-      name: "beginVisualCapture",
-      description: "High-level entrypoint for /see or /clip that starts the capture and overlay flow.",
-      handler: (args) => this.visualFlow.begin(readCaptureCommand(args), readOptionalNumber(args.ttlMs, "ttlMs"))
+      name: "registerBrowserTabSnapshot",
+      description: "Register or update the latest screenshot snapshot for a browser tab.",
+      handler: (args) => this.browserTabs.upsert(readBrowserTabSnapshotInput(args))
     });
 
     this.tools.register({
-      name: "getVisualCaptureStatus",
-      description: "High-level combined status view for the capture and overlay flow.",
-      handler: (args) => this.visualFlow.getStatus(readSessionId(args))
+      name: "removeBrowserTabSnapshot",
+      description: "Remove a browser tab snapshot from the in-memory registry.",
+      handler: (args) => ({ removed: this.browserTabs.remove(readRequiredStringField(args, "tabId")) })
     });
 
     this.tools.register({
-      name: "awaitVisualCaptureResult",
-      description: "High-level wait for a final visual capture result with client-friendly guidance.",
-      handler: (args) => this.visualFlow.awaitResult(readSessionId(args), readOptionalNumber(args.timeoutMs, "timeoutMs"))
+      name: "listBrowserTabs",
+      description: "List the in-memory browser tab snapshots currently available for /see targeting.",
+      handler: () => this.browserCapture.listTabs()
     });
 
     this.tools.register({
-      name: "cleanupTerminalSessions",
-      description: "Reap terminal capture and overlay sessions older than the provided age.",
-      handler: (args) => {
-        const maxAgeMs = readCleanupAgeMs(args);
-        return {
-          capture: this.captureSessions.reapTerminalSessions(maxAgeMs),
-          overlay: this.overlayAgent.reapTerminalSessions(maxAgeMs)
-        };
-      }
-    });
-
-    this.tools.register({
-      name: "startCaptureSession",
-      description: "Create a new in-memory capture session and mark it active.",
-      handler: (args) => this.captureSessions.startSession({ command: readCaptureCommand(args), ttlMs: readOptionalNumber(args.ttlMs, "ttlMs") })
-    });
-
-    this.tools.register({
-      name: "awaitCaptureSession",
-      description: "Wait for a session to complete, cancel, fail, expire, or time out.",
-      handler: (args) => this.captureSessions.awaitSession({ sessionId: readSessionId(args), timeoutMs: readOptionalNumber(args.timeoutMs, "timeoutMs") })
+      name: "seeBrowserTab",
+      description: "Resolve a browser tab title and immediately complete a /see capture.",
+      handler: (args) =>
+        this.browserCapture.seeTab(
+          args.command === undefined ? "see" : readCaptureCommand(args),
+          readOptionalString(args.query, "query")
+        )
     });
 
     this.tools.register({
@@ -230,127 +203,41 @@ export class VisualContextServer {
     });
 
     this.tools.register({
-      name: "completeCaptureSession",
-      description: "Complete a session with a provided capture bundle.",
-      handler: (args) => this.captureSessions.completeSession({ sessionId: readSessionId(args), bundle: readCaptureBundle(args) })
+      name: "awaitCaptureSession",
+      description: "Wait for a session to complete, cancel, fail, expire, or time out.",
+      handler: (args) =>
+        this.captureSessions.awaitSession({
+          sessionId: readSessionId(args),
+          timeoutMs: readOptionalNumber(args.timeoutMs, "timeoutMs")
+        })
     });
 
     this.tools.register({
-      name: "completeMockCaptureSession",
-      description: "Complete a session with a mock capture bundle for testing.",
-      handler: (args) => {
-        const session = this.captureSessions.getSession(readSessionId(args));
-        return this.captureSessions.completeSession({ sessionId: session.id, bundle: createMockCaptureBundle(session.id, session.command) });
-      }
+      name: "completeCaptureSession",
+      description: "Complete a session with a provided capture bundle.",
+      handler: (args) =>
+        this.captureSessions.completeSession({
+          sessionId: readSessionId(args),
+          bundle: readCaptureBundle(args)
+        })
     });
 
     this.tools.register({
       name: "cancelCaptureSession",
-      description: "Cancel an active or created capture session.",
+      description: "Cancel an active capture session.",
       handler: (args) => this.captureSessions.cancelSession(readSessionId(args))
     });
 
     this.tools.register({
       name: "failCaptureSession",
-      description: "Mark a session as failed with an error message.",
+      description: "Fail an active capture session with an error message.",
       handler: (args) => this.captureSessions.failSession(readSessionId(args), readErrorMessage(args))
     });
 
     this.tools.register({
-      name: "launchOverlayCaptureSession",
-      description: "Launch the local overlay-agent prototype for a capture session.",
-      handler: (args) => this.overlayAgent.launch(readSessionId(args))
-    });
-
-    this.tools.register({
-      name: "getOverlayCaptureSession",
-      description: "Fetch the latest overlay-agent session state.",
-      handler: (args) => this.overlayAgent.get(readSessionId(args))
-    });
-
-    this.tools.register({
-      name: "listOverlayCaptureSessions",
-      description: "List all overlay-agent prototype sessions.",
-      handler: () => this.overlayAgent.list()
-    });
-
-    this.tools.register({
-      name: "setOverlayActiveTool",
-      description: "Set the current overlay annotation tool.",
-      handler: (args) => this.overlayAgent.setActiveTool(readSessionId(args), readOverlayTool(args))
-    });
-
-    this.tools.register({
-      name: "selectOverlayRegion",
-      description: "Set the selected region for the overlay-agent prototype.",
-      handler: (args) => {
-        const bounds = readSelectionBounds(args);
-        return this.overlayAgent.selectRegion(readSessionId(args), {
-          ...bounds,
-          displayId: typeof args.displayId === "string" ? args.displayId : undefined,
-          activeAppName: typeof args.activeAppName === "string" ? args.activeAppName : undefined,
-          activeWindowTitle: typeof args.activeWindowTitle === "string" ? args.activeWindowTitle : undefined
-        });
-      }
-    });
-
-    this.tools.register({
-      name: "moveOverlaySelection",
-      description: "Move the current overlay selection by delta values.",
-      handler: (args) => this.overlayAgent.moveSelection(readSessionId(args), { dx: readRequiredNumber(args.dx, "dx"), dy: readRequiredNumber(args.dy, "dy") })
-    });
-
-    this.tools.register({
-      name: "resizeOverlaySelection",
-      description: "Resize or reposition the current overlay selection.",
-      handler: (args) => this.overlayAgent.resizeSelection(readSessionId(args), {
-        x: readOptionalNumber(args.x, "x"),
-        y: readOptionalNumber(args.y, "y"),
-        width: readOptionalNumber(args.width, "width"),
-        height: readOptionalNumber(args.height, "height")
-      })
-    });
-
-    this.tools.register({
-      name: "addOverlayAnnotation",
-      description: "Add a rectangle, arrow, text, or redact annotation to the overlay session.",
-      handler: (args) => this.overlayAgent.addAnnotation(readSessionId(args), { id: readOptionalAnnotationId(args), annotation: readAnnotation(args) })
-    });
-
-    this.tools.register({
-      name: "updateOverlayAnnotation",
-      description: "Update an existing overlay annotation.",
-      handler: (args) => this.overlayAgent.updateAnnotation(readSessionId(args), { annotationId: readAnnotationId(args), annotation: readAnnotation(args) })
-    });
-
-    this.tools.register({
-      name: "removeOverlayAnnotation",
-      description: "Remove an existing overlay annotation.",
-      handler: (args) => this.overlayAgent.removeAnnotation(readSessionId(args), readAnnotationId(args))
-    });
-
-    this.tools.register({
-      name: "clearOverlayAnnotations",
-      description: "Clear all overlay annotations for the current session.",
-      handler: (args) => this.overlayAgent.clearAnnotations(readSessionId(args))
-    });
-
-    this.tools.register({
-      name: "sendOverlayCaptureSession",
-      description: "Send the current overlay selection back through the capture session flow.",
-      handler: async (args) => this.overlayAgent.send(readSessionId(args))
-    });
-
-    this.tools.register({
-      name: "cancelOverlayCaptureSession",
-      description: "Cancel the overlay session and the backing capture session.",
-      handler: (args) => this.overlayAgent.cancel(readSessionId(args))
-    });
-
-    this.tools.register({
-      name: "failOverlayCaptureSession",
-      description: "Fail the overlay session and the backing capture session.",
-      handler: (args) => this.overlayAgent.fail(readSessionId(args), readErrorMessage(args))
+      name: "cleanupTerminalSessions",
+      description: "Reap terminal capture sessions older than the provided age.",
+      handler: (args) => this.captureSessions.reapTerminalSessions(readCleanupAgeMs(args))
     });
   }
 }
