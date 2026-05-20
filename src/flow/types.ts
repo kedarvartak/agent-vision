@@ -31,6 +31,16 @@ export type VisualCaptureGuidance = {
   title: string;
   message: string;
   nextActions: VisualCaptureAction[];
+  primaryAction: VisualCaptureAction;
+  highlightedShortcut?: string;
+  footerHint?: string;
+};
+
+export type VisualCaptureClientHints = {
+  statusTone: "info" | "success" | "warning" | "error";
+  showToolbar: boolean;
+  showPreview: boolean;
+  allowInlineTips: boolean;
 };
 
 export type BeginVisualCaptureResult = {
@@ -40,6 +50,7 @@ export type BeginVisualCaptureResult = {
   overlaySession: OverlaySession;
   stage: VisualCaptureStage;
   guidance: VisualCaptureGuidance;
+  clientHints: VisualCaptureClientHints;
 };
 
 export type VisualCaptureStatusResult = {
@@ -49,6 +60,7 @@ export type VisualCaptureStatusResult = {
   overlayStatus?: OverlaySession["status"];
   stage: VisualCaptureStage;
   guidance: VisualCaptureGuidance;
+  clientHints: VisualCaptureClientHints;
   captureSession: CaptureSession;
   overlaySession?: OverlaySession;
   result?: CaptureBundle;
@@ -58,6 +70,7 @@ export type AwaitVisualCaptureResult = {
   sessionId: string;
   stage: VisualCaptureStage;
   guidance: VisualCaptureGuidance;
+  clientHints: VisualCaptureClientHints;
   waitResult: AwaitCaptureSessionResult;
   result?: CaptureBundle;
 };

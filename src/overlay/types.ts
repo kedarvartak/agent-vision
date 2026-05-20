@@ -24,6 +24,42 @@ export type OverlayAnnotationRecord = {
   updatedAt: string;
 };
 
+export type OverlayToolDescriptor = {
+  tool: OverlayTool;
+  label: string;
+  shortcut: string;
+  description: string;
+};
+
+export type OverlaySelectionSummary = {
+  label: string;
+  areaPx: number;
+  bounds?: SelectionBounds;
+};
+
+export type OverlayAnnotationSummary = {
+  total: number;
+  byType: Partial<Record<Annotation["type"], number>>;
+  latestAnnotationId?: string;
+};
+
+export type OverlayPreviewState = {
+  canSend: boolean;
+  showSelectionOutline: boolean;
+  showAnnotationLayer: boolean;
+  emptyStateMessage?: string;
+};
+
+export type OverlayHudState = {
+  title: string;
+  subtitle: string;
+  statusBadge: string;
+  primaryActionLabel: string;
+  secondaryActionLabel: string;
+  activeToolLabel: string;
+  onboardingHint: string;
+};
+
 export type OverlaySession = {
   sessionId: string;
   command: CaptureCommand;
@@ -35,6 +71,11 @@ export type OverlaySession = {
   activeTool: OverlayTool;
   annotations: OverlayAnnotationRecord[];
   shortcuts: Record<OverlayTool, string>;
+  toolDescriptors: OverlayToolDescriptor[];
+  selectionSummary: OverlaySelectionSummary;
+  annotationSummary: OverlayAnnotationSummary;
+  preview: OverlayPreviewState;
+  hud: OverlayHudState;
   errorMessage?: string;
 };
 

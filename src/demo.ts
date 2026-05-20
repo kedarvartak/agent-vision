@@ -13,7 +13,9 @@ const run = async (): Promise<void> => {
   const server = new VisualContextServer();
   server.start();
 
-  const started = ensureBeginResult(await server.callTool("beginVisualCapture", { command: "see", ttlMs: 5_000 }));
+  const started = ensureBeginResult(
+    await server.callTool("beginVisualCapture", { command: "see", ttlMs: 5_000 })
+  );
   console.log("begin", JSON.stringify(started, null, 2));
 
   await server.callTool("selectOverlayRegion", {
@@ -23,7 +25,7 @@ const run = async (): Promise<void> => {
     width: 640,
     height: 360,
     activeAppName: "Prototype Browser",
-    activeWindowTitle: "Phase 7 Demo",
+    activeWindowTitle: "Phase 8 Demo",
     displayId: "display-1"
   });
 
@@ -58,11 +60,6 @@ const run = async (): Promise<void> => {
     timeoutMs: 5_000
   });
   console.log("awaited", JSON.stringify(finalResult, null, 2));
-
-  const cleanup = await server.callTool("cleanupTerminalSessions", {
-    maxAgeMs: 0
-  });
-  console.log("cleanup", JSON.stringify(cleanup, null, 2));
 };
 
 run().catch((error) => {

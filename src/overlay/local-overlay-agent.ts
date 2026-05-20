@@ -16,12 +16,17 @@ import type { CaptureSession, CaptureSessionStatus } from "../types/session.js";
 import type {
   CreateAnnotationInput,
   OverlayAnnotationRecord,
+  OverlayAnnotationSummary,
+  OverlayHudState,
   OverlayMoveInput,
+  OverlayPreviewState,
   OverlayRegionInput,
   OverlayResizeInput,
+  OverlaySelectionSummary,
   OverlaySession,
   OverlaySessionStatus,
   OverlayTool,
+  OverlayToolDescriptor,
   UpdateAnnotationInput
 } from "./types.js";
 
@@ -40,12 +45,38 @@ const OVERLAY_SHORTCUTS: Record<OverlayTool, string> = {
   redact: "R"
 };
 
+const TOOL_LABELS: Record<OverlayTool, string> = {
+  select: "Select",
+  rect: "Box",
+  arrow: "Arrow",
+  text: "Text",
+  redact: "Redact"
+};
+
+const TOOL_DESCRIPTIONS: Record<OverlayTool, string> = {
+  select: "Create or adjust the capture region.",
+  rect: "Highlight an area with a rectangle.",
+  arrow: "Point at a detail that needs attention.",
+  text: "Add a short note for the model.",
+  redact: "Hide sensitive content before sending."
+};
+
 const OVERLAY_TERMINAL_BY_CAPTURE_STATUS: Partial<Record<CaptureSessionStatus, OverlaySessionStatus>> = {
   completed: "sent",
   cancelled: "cancelled",
   failed: "failed",
   expired: "expired"
 };
+
+const TOOL_ORDER: OverlayTool[] = ["select", "rect", "arrow", "text", "redact"];
+
+const buildToolDescriptors = (): OverlayToolDescriptor[] =>
+  TOOL_ORDER.map((tool) => ({
+    tool,
+    label: TOOL_LABELS[tool],
+    shortcut: OVERLAY_SHORTCUTS[tool],
+    description: TOOL_DESCRIPTIONS[tool]
+  }));
 
 export class LocalOverlayAgent {
   private readonly overlaySessions = new Map<string, OverlaySession>();
@@ -65,7 +96,7 @@ export class LocalOverlayAgent {
     }
 
     const now = new Date().toISOString();
-    const overlaySession: OverlaySession = {
+    const overlaySession = this.present({
       sessionId: captureSession.id,
       command: captureSession.command,
       status: "armed",
@@ -73,8 +104,26 @@ export class LocalOverlayAgent {
       updatedAt: now,
       activeTool: "select",
       annotations: [],
-      shortcuts: OVERLAY_SHORTCUTS
-    };
+      shortcuts: OVERLAY_SHORTCUTS,
+      toolDescriptors: buildToolDescriptors(),
+      selectionSummary: { label: "No region selected yet", areaPx: 0 },
+      annotationSummary: { total: 0, byType: {} },
+      preview: {
+        canSend: false,
+        showSelectionOutline: false,
+        showAnnotationLayer: false,
+        emptyStateMessage: "Select a region to start the preview."
+      },
+      hud: {
+        title: "Capture Armed",
+        subtitle: "Switch to the target screen and drag a region to begin.",
+        statusBadge: "Waiting for selection",
+        primaryActionLabel: "Select Region",
+        secondaryActionLabel: "Cancel",
+        activeToolLabel: "Select (V)",
+        onboardingHint: "Tip: start with a tight crop, then annotate only what matters."
+      }
+    });
 
     this.overlaySessions.set(sessionId, overlaySession);
     this.logger.info("Launched overlay capture session", { sessionId });
@@ -387,7 +436,7 @@ export class LocalOverlayAgent {
     let captureSession: CaptureSession;
     try {
       captureSession = this.captureSessions.getSession(session.sessionId);
-    } catch (error) {
+    } catch {
       return session;
     }
 
@@ -412,13 +461,158 @@ export class LocalOverlayAgent {
   }
 
   private persist(session: OverlaySession): OverlaySession {
-    const updated: OverlaySession = {
+    const updated = this.present({
       ...session,
       updatedAt: new Date().toISOString()
-    };
+    });
 
     this.overlaySessions.set(updated.sessionId, updated);
     return updated;
+  }
+
+  private present(session: OverlaySession): OverlaySession {
+    const selectionSummary = this.buildSelectionSummary(session.selection);
+    const annotationSummary = this.buildAnnotationSummary(session.annotations);
+    const preview = this.buildPreviewState(session, selectionSummary, annotationSummary);
+    const hud = this.buildHudState(session, selectionSummary, annotationSummary, preview);
+
+    return {
+      ...session,
+      toolDescriptors: buildToolDescriptors(),
+      selectionSummary,
+      annotationSummary,
+      preview,
+      hud
+    };
+  }
+
+  private buildSelectionSummary(selection?: SelectionBounds): OverlaySelectionSummary {
+    if (!selection) {
+      return {
+        label: "No region selected yet",
+        areaPx: 0
+      };
+    }
+
+    const areaPx = selection.width * selection.height;
+    return {
+      label: `${selection.width} x ${selection.height} at (${selection.x}, ${selection.y})`,
+      areaPx,
+      bounds: selection
+    };
+  }
+
+  private buildAnnotationSummary(annotations: OverlayAnnotationRecord[]): OverlayAnnotationSummary {
+    const byType: OverlayAnnotationSummary["byType"] = {};
+    for (const entry of annotations) {
+      byType[entry.annotation.type] = (byType[entry.annotation.type] ?? 0) + 1;
+    }
+
+    return {
+      total: annotations.length,
+      byType,
+      latestAnnotationId: annotations.at(-1)?.id
+    };
+  }
+
+  private buildPreviewState(
+    session: OverlaySession,
+    selectionSummary: OverlaySelectionSummary,
+    annotationSummary: OverlayAnnotationSummary
+  ): OverlayPreviewState {
+    const hasSelection = Boolean(session.selection);
+    const canSend = hasSelection && !this.isTerminal(session.status);
+
+    return {
+      canSend,
+      showSelectionOutline: hasSelection,
+      showAnnotationLayer: annotationSummary.total > 0,
+      emptyStateMessage: hasSelection
+        ? undefined
+        : "Select a region to activate the preview and annotation layer."
+    };
+  }
+
+  private buildHudState(
+    session: OverlaySession,
+    selectionSummary: OverlaySelectionSummary,
+    annotationSummary: OverlayAnnotationSummary,
+    preview: OverlayPreviewState
+  ): OverlayHudState {
+    const activeToolLabel = `${TOOL_LABELS[session.activeTool]} (${session.shortcuts[session.activeTool]})`;
+
+    if (session.status === "armed") {
+      return {
+        title: "Capture Armed",
+        subtitle: "Switch to the target screen and drag a region to begin.",
+        statusBadge: "Waiting for selection",
+        primaryActionLabel: "Select Region",
+        secondaryActionLabel: "Cancel",
+        activeToolLabel,
+        onboardingHint: "Start with a focused crop. You can annotate after selecting."
+      };
+    }
+
+    if (session.status === "selected") {
+      return {
+        title: annotationSummary.total > 0 ? "Preview Ready" : "Selection Ready",
+        subtitle:
+          annotationSummary.total > 0
+            ? `${annotationSummary.total} annotation${annotationSummary.total === 1 ? "" : "s"} added.`
+            : "Add markup or send the current selection as-is.",
+        statusBadge: preview.canSend ? "Ready to send" : "Preview unavailable",
+        primaryActionLabel: preview.canSend ? "Send Capture" : "Select Region",
+        secondaryActionLabel: annotationSummary.total > 0 ? "Clear Annotations" : "Cancel",
+        activeToolLabel,
+        onboardingHint: `Selection: ${selectionSummary.label}`
+      };
+    }
+
+    if (session.status === "sent") {
+      return {
+        title: "Capture Sent",
+        subtitle: "The capture bundle has been returned to the LLM workflow.",
+        statusBadge: "Delivered",
+        primaryActionLabel: "Done",
+        secondaryActionLabel: "Close",
+        activeToolLabel,
+        onboardingHint: "Nothing was persisted by default."
+      };
+    }
+
+    if (session.status === "failed") {
+      return {
+        title: "Capture Failed",
+        subtitle: session.errorMessage ?? "The overlay session failed before completion.",
+        statusBadge: "Error",
+        primaryActionLabel: "Retry",
+        secondaryActionLabel: "Close",
+        activeToolLabel,
+        onboardingHint: "Inspect the error and start a new capture session if needed."
+      };
+    }
+
+    if (session.status === "expired") {
+      return {
+        title: "Capture Expired",
+        subtitle: "The session timed out before send.",
+        statusBadge: "Expired",
+        primaryActionLabel: "Retry",
+        secondaryActionLabel: "Close",
+        activeToolLabel,
+        onboardingHint: "Start a new session to continue."
+      };
+    }
+
+    return {
+      title: "Capture Cancelled",
+      subtitle: "The overlay session was cancelled.",
+      statusBadge: "Cancelled",
+      primaryActionLabel: "Retry",
+      secondaryActionLabel: "Close",
+      activeToolLabel,
+      onboardingHint: "You can start a new session whenever you are ready."
+    };
   }
 
   private assertValidBounds(bounds: SelectionBounds): void {

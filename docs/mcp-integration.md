@@ -2,12 +2,12 @@
 
 ## Goal
 
-This Phase 6 layer gives MCP clients a higher-level end-to-end flow for `/see` and `/clip`.
+This integration layer gives MCP clients a higher-level end-to-end flow for `/see` and `/clip`.
 
-Instead of orchestrating a dozen low-level calls manually, a client can now:
+Instead of orchestrating many low-level calls manually, a client can now:
 
 1. call `beginVisualCapture`
-2. react to the returned guidance message
+2. render the returned `guidance`, `clientHints`, and `overlaySession.hud`
 3. drive selection and annotation through overlay tools
 4. call `sendOverlayCaptureSession`
 5. call `awaitVisualCaptureResult` or `getVisualCaptureStatus`
@@ -18,7 +18,7 @@ Instead of orchestrating a dozen low-level calls manually, a client can now:
 ### `/see`
 
 1. `beginVisualCapture({ command: "see" })`
-2. show returned guidance to the user
+2. show returned guidance and HUD state to the user
 3. user switches to target app
 4. client or local overlay uses:
    - `selectOverlayRegion`
@@ -26,14 +26,15 @@ Instead of orchestrating a dozen low-level calls manually, a client can now:
    - `addOverlayAnnotation`
    - `updateOverlayAnnotation`
    - `removeOverlayAnnotation`
-5. `sendOverlayCaptureSession`
-6. `awaitVisualCaptureResult`
-7. if outcome is `completed`, attach `result` to the LLM turn
+5. `getVisualCaptureStatus` can refresh the preview and HUD state as the user works
+6. `sendOverlayCaptureSession`
+7. `awaitVisualCaptureResult`
+8. if outcome is `completed`, attach `result` to the LLM turn
 
 ### `/clip`
 
 1. `beginVisualCapture({ command: "clip" })`
-2. show returned guidance to the user
+2. show returned guidance and HUD state to the user
 3. user selects region
 4. optionally annotate
 5. `sendOverlayCaptureSession`
@@ -52,6 +53,7 @@ Returns:
 - `overlaySession`
 - `stage`
 - `guidance`
+- `clientHints`
 
 ### `getVisualCaptureStatus`
 
@@ -62,6 +64,7 @@ Returns:
 - capture and overlay states
 - derived stage
 - guidance message
+- client display hints
 - final result if completed
 
 ### `awaitVisualCaptureResult`
@@ -73,7 +76,37 @@ Returns:
 - wait result
 - derived stage
 - guidance message
+- client display hints
 - `result` if completed
+
+## UX Fields For Clients
+
+### `guidance`
+
+Use this for conversational or status-line copy:
+- `title`
+- `message`
+- `nextActions`
+- `primaryAction`
+- `highlightedShortcut`
+- `footerHint`
+
+### `clientHints`
+
+Use this to control presentation:
+- `statusTone`
+- `showToolbar`
+- `showPreview`
+- `allowInlineTips`
+
+### `overlaySession`
+
+Use this to power an overlay HUD:
+- `toolDescriptors`
+- `selectionSummary`
+- `annotationSummary`
+- `preview`
+- `hud`
 
 ## Example
 
@@ -82,7 +115,9 @@ const started = await server.callTool("beginVisualCapture", {
   command: "see"
 });
 
-// user interacts with overlay
+renderStatus(started.guidance);
+renderHud(started.overlaySession.hud);
+
 await server.callTool("selectOverlayRegion", {
   sessionId: started.sessionId,
   x: 120,
@@ -103,6 +138,13 @@ await server.callTool("addOverlayAnnotation", {
   }
 });
 
+const status = await server.callTool("getVisualCaptureStatus", {
+  sessionId: started.sessionId
+});
+
+renderHud(status.overlaySession?.hud);
+renderPreviewMeta(status.overlaySession?.selectionSummary, status.overlaySession?.annotationSummary);
+
 await server.callTool("sendOverlayCaptureSession", {
   sessionId: started.sessionId
 });
@@ -112,14 +154,3 @@ const finished = await server.callTool("awaitVisualCaptureResult", {
   timeoutMs: 5000
 });
 ```
-
-## Client Guidance Contract
-
-Each high-level result includes:
-
-- `stage`: simplified client-facing flow state
-- `guidance.title`: short UI label
-- `guidance.message`: user-facing status text
-- `guidance.nextActions`: recommended next client actions
-
-This is meant to help IDE/chat clients show clean UI copy without duplicating server-side flow logic.
