@@ -11,6 +11,7 @@ Current implementation:
 - normalized live browser-tab model with ordering heuristics
 - active-tab fallback and fuzzy tab resolution
 - real PNG screenshot capture from resolved tabs through CDP
+- high-level browser-first `/see` flow
 
 ## Phase 1: CDP connection layer
 
@@ -46,10 +47,11 @@ Completed:
 
 ## Phase 5: browser-first `/see`
 
-Goals:
+Completed:
 - complete `/see` directly from live CDP state
 - avoid extension push and avoid desktop capture flows entirely
 - return a single high-level browser-first result instead of separate resolution and screenshot steps
+- expose the Phase 5 `seeBrowserTabViaCdp` MCP tool
 
 ## Phase 6: structured browser context
 

@@ -13,23 +13,48 @@ Examples:
 /see "OpenAI API docs"
 ```
 
-## Current Phase 1 scope
+## Current MCP tool surface
 
-Implemented now:
-- CDP connection status check
-- live tab discovery from a Chrome remote debugging endpoint
+### `getBrowserCdpStatus`
 
-Current MCP tools:
-- `getBrowserCdpStatus`
-- `discoverBrowserTabsViaCdp`
+Checks whether the MCP can connect to a Chrome DevTools Protocol endpoint.
 
-## Planned next steps
+### `discoverBrowserTabsViaCdp`
 
-After discovery, the next implementation phases will add:
-- tab resolution by title
-- screenshot capture through CDP
-- browser-first `/see` completion
-- optional DOM/text enrichment
+Lists raw live browser tabs from the Chrome debugging endpoint.
+
+### `refreshLiveBrowserTabs`
+
+Refreshes the normalized live browser-tab model from CDP.
+
+### `listLiveBrowserTabs`
+
+Returns the cached normalized live browser-tab model.
+
+### `resolveLiveBrowserTab`
+
+Resolves the active or best matching tab for a `/see`-style query.
+
+### `captureResolvedBrowserTabScreenshot`
+
+Captures a real PNG screenshot from the resolved tab through CDP.
+
+### `seeBrowserTabViaCdp`
+
+High-level browser-first `/see` flow.
+
+Input:
+
+```json
+{
+  "query": "OpenAI API docs"
+}
+```
+
+Outcomes:
+- `completed`: a tab was resolved and captured
+- `ambiguous`: multiple tabs matched similarly
+- `not_found`: no tab matched
 
 ## Notes
 
