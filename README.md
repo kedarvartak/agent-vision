@@ -1,7 +1,7 @@
 <div align="center">
   <h1>Agent Vision</h1>
   <p align="center">
-  <img src="./docs/banner.png" width="800" />
+  <img src="https://github.com/kedarvartak/agent-vision/blob/main/docs/banner.png?raw=true" alt="Agent Vision Banner"/>
   </p>
   <p>
     <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-ES2022-3178C6?style=flat-square" />

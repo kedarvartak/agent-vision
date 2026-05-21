@@ -27,6 +27,14 @@
     "agent"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kedarvartak/agent-vision.git"
+  },
+  "homepage": "https://github.com/kedarvartak/agent-vision#readme",
+  "bugs": {
+    "url": "https://github.com/kedarvartak/agent-vision/issues"
+  },
   "dependencies": {
     "ws": "^8.18.0"
   },
