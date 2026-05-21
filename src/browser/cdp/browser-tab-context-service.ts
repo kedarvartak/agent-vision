@@ -95,12 +95,10 @@ export class BrowserTabContextService {
     private readonly logger: Logger
   ) {}
 
-  async getResolvedContext(query?: string): Promise<GetResolvedBrowserTabContextResult> {
-    const resolution = this.resolver.resolve(query);
-    if (resolution.status !== "resolved") {
-      return resolution;
-    }
-
+  async getForResolvedTab(
+    resolution: Extract<LiveBrowserTabResolution, { status: "resolved" }>,
+    query?: string
+  ): Promise<BrowserTabStructuredContext> {
     const context = await collectTabContext(resolution);
     this.logger.info("Collected structured browser tab context via CDP", {
       query,
@@ -108,7 +106,16 @@ export class BrowserTabContextService {
       title: resolution.tab.title,
       visibleTextLength: context.visibleTextLength
     });
+    return context;
+  }
 
+  async getResolvedContext(query?: string): Promise<GetResolvedBrowserTabContextResult> {
+    const resolution = this.resolver.resolve(query);
+    if (resolution.status !== "resolved") {
+      return resolution;
+    }
+
+    const context = await this.getForResolvedTab(resolution, query);
     return {
       status: "completed",
       query,

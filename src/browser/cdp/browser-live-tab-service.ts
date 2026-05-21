@@ -1,7 +1,7 @@
 import type { Logger } from "../../logging/logger.js";
 import { BrowserCdpDiscoveryService } from "./browser-cdp-discovery-service.js";
 import { LiveBrowserTabRegistry } from "./live-browser-tab-registry.js";
-import { toDiscoveryResult, type LiveBrowserTabDiscoveryResult } from "./tab-model.js";
+import { toDiscoveryResult, type LiveBrowserTabDiscoveryResult, type LiveBrowserTab } from "./tab-model.js";
 
 export class BrowserLiveTabService {
   constructor(
@@ -25,6 +25,14 @@ export class BrowserLiveTabService {
     });
 
     return toDiscoveryResult(discoveryResult, tabs);
+  }
+
+  pruneStale(maxAgeMs?: number): { removed: LiveBrowserTab[]; remaining: LiveBrowserTabDiscoveryResult } {
+    const removed = this.registry.pruneStale(maxAgeMs);
+    return {
+      removed,
+      remaining: this.list()
+    };
   }
 
   list(): LiveBrowserTabDiscoveryResult {

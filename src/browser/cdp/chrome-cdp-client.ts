@@ -26,6 +26,39 @@ const readBrowserName = (browser?: string): string | undefined => {
   return name || browser;
 };
 
+const toErrorMessage = (error: unknown, endpoint: string): { errorMessage: string; errorHint?: string } => {
+  const message = error instanceof Error ? error.message : String(error);
+  const lowered = message.toLowerCase();
+
+  if (lowered.includes("timed out")) {
+    return {
+      errorMessage: message,
+      errorHint: `Chrome did not respond in time. Check that a debug-enabled browser is running at ${endpoint}.`
+    };
+  }
+
+  if (
+    lowered.includes("econnrefused") ||
+    lowered.includes("fetch failed") ||
+    lowered.includes("failed to fetch") ||
+    lowered.includes("networkerror")
+  ) {
+    return {
+      errorMessage: message,
+      errorHint: `Could not reach the CDP endpoint at ${endpoint}. Start Chrome with --remote-debugging-port=9222 or set CHROME_CDP_ENDPOINT.`
+    };
+  }
+
+  if (lowered.includes("404") || lowered.includes("status 404")) {
+    return {
+      errorMessage: message,
+      errorHint: `The endpoint ${endpoint} responded, but it does not look like a Chrome DevTools Protocol server.`
+    };
+  }
+
+  return { errorMessage: message };
+};
+
 type RawTarget = {
   id?: string;
   type?: string;
@@ -64,13 +97,18 @@ export class ChromeCdpClient {
         webSocketDebuggerUrl: version.webSocketDebuggerUrl
       };
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.logger.error("Failed CDP connection check", { endpoint, errorMessage: message });
+      const diagnostic = toErrorMessage(error, endpoint);
+      this.logger.error("Failed CDP connection check", {
+        endpoint,
+        errorMessage: diagnostic.errorMessage,
+        errorHint: diagnostic.errorHint
+      });
       return {
         endpoint,
         connected: false,
         checkedAt,
-        errorMessage: message
+        errorMessage: diagnostic.errorMessage,
+        errorHint: diagnostic.errorHint
       };
     }
   }

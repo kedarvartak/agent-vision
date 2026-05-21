@@ -17,6 +17,7 @@ export type CdpConnectionStatus = {
   userAgent?: string;
   webSocketDebuggerUrl?: string;
   errorMessage?: string;
+  errorHint?: string;
 };
 
 export type CdpDiscoveredTarget = {

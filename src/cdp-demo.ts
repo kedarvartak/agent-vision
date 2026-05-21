@@ -8,6 +8,9 @@ const main = async () => {
   const rawTabs = await server.callTool("discoverBrowserTabsViaCdp");
   const liveTabs = await server.callTool("refreshLiveBrowserTabs");
   const cachedLiveTabs = await server.callTool("listLiveBrowserTabs");
+  const pruned = await server.callTool("pruneStaleLiveBrowserTabs", {
+    maxAgeMs: 5 * 60 * 1000
+  });
   const resolvedActive = await server.callTool("resolveLiveBrowserTab");
   const resolvedQuery = await server.callTool("resolveLiveBrowserTab", {
     query: "docs"
@@ -27,6 +30,7 @@ const main = async () => {
   console.log("cdp-tabs", JSON.stringify(rawTabs, null, 2));
   console.log("live-browser-tabs", JSON.stringify(liveTabs, null, 2));
   console.log("cached-live-browser-tabs", JSON.stringify(cachedLiveTabs, null, 2));
+  console.log("pruned-stale-tabs", JSON.stringify(pruned, null, 2));
   console.log("resolved-active", JSON.stringify(resolvedActive, null, 2));
   console.log("resolved-query", JSON.stringify(resolvedQuery, null, 2));
   console.log("captured-screenshot", JSON.stringify(screenshot, null, 2));

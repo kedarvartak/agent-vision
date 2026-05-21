@@ -7,6 +7,10 @@ import {
   toOrderHint
 } from "./tab-model.js";
 
+const DEFAULT_STALE_TAB_MAX_AGE_MS = 5 * 60 * 1000;
+
+const toMs = (value: string): number => Date.parse(value);
+
 export class LiveBrowserTabRegistry {
   private readonly tabs = new Map<string, LiveBrowserTab>();
 
@@ -18,6 +22,20 @@ export class LiveBrowserTabRegistry {
     for (const [index, target] of input.tabs.entries()) {
       seenIds.add(target.id);
       this.tabs.set(target.id, this.toLiveTab(target, index, input));
+    }
+
+    const removedTargetIds: string[] = [];
+    for (const existing of this.tabs.values()) {
+      if (existing.lastDiscoveryEndpoint !== input.endpoint) {
+        continue;
+      }
+
+      if (seenIds.has(existing.targetId)) {
+        continue;
+      }
+
+      this.tabs.delete(existing.targetId);
+      removedTargetIds.push(existing.targetId);
     }
 
     const ordered = this.list().map((tab, index) => ({
@@ -33,10 +51,36 @@ export class LiveBrowserTabRegistry {
       endpoint: input.endpoint,
       discoveredAt: input.discoveredAt,
       tabCount: ordered.length,
-      seenIds: [...seenIds]
+      seenIds: [...seenIds],
+      removedTargetIds
     });
 
     return ordered;
+  }
+
+  pruneStale(maxAgeMs = DEFAULT_STALE_TAB_MAX_AGE_MS, now = new Date()): LiveBrowserTab[] {
+    const cutoffMs = now.getTime() - maxAgeMs;
+    const removed: LiveBrowserTab[] = [];
+
+    for (const tab of this.tabs.values()) {
+      const lastSeenMs = toMs(tab.lastSeenAt);
+      if (!Number.isFinite(lastSeenMs) || lastSeenMs >= cutoffMs) {
+        continue;
+      }
+
+      this.tabs.delete(tab.targetId);
+      removed.push(tab);
+    }
+
+    if (removed.length > 0) {
+      this.logger.info("Pruned stale live browser tabs", {
+        maxAgeMs,
+        removedTargetIds: removed.map((tab) => tab.targetId),
+        removedCount: removed.length
+      });
+    }
+
+    return removed;
   }
 
   list(): LiveBrowserTab[] {

@@ -13,6 +13,7 @@ Current implementation:
 - real PNG screenshot capture from resolved tabs through CDP
 - high-level browser-first `/see` flow
 - structured browser context with visible text and page metadata
+- refresh-aware hardening and stale-target cleanup
 
 ## Phase 1: CDP connection layer
 
@@ -64,9 +65,9 @@ Completed:
 
 ## Phase 7: hardening
 
-Goals:
-- reconnect logic
-- clearer connection errors
-- stale target cleanup
-- stable IDE-facing behavior
-- optional console and network diagnostics when they materially improve debugging
+Completed:
+- add clearer CDP connection error hints
+- remove disappeared tabs during refresh and prune stale cached tabs
+- add refresh-aware `/see` retry behavior for stale or moved targets
+- expose a stale-tab cleanup MCP tool
+- keep the high-level browser flow more stable for IDE clients

@@ -25,6 +25,18 @@ const readOptionalString = (value: unknown, field: string): string | undefined =
 const readOptionalEndpoint = (args: Record<string, unknown>): string | undefined =>
   readOptionalString(args.endpoint, "endpoint");
 
+const readOptionalNumber = (value: unknown, field: string): number | undefined => {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value !== "number" || Number.isNaN(value) || value < 0) {
+    throw new AppError("INVALID_ARGUMENT", `${field} must be a non-negative number`);
+  }
+
+  return value;
+};
+
 export class VisualContextServer {
   public readonly logger = new ConsoleLogger("visual-context-server");
   private readonly cdpClient = new ChromeCdpClient(this.logger);
@@ -48,6 +60,7 @@ export class VisualContextServer {
     this.logger
   );
   private readonly browserSee = new BrowserSeeService(
+    this.browserLiveTabs,
     this.tabScreenshots,
     this.tabContext,
     this.logger
@@ -95,6 +108,12 @@ export class VisualContextServer {
       name: "listLiveBrowserTabs",
       description: "List the current normalized live browser-tab model without re-querying Chrome.",
       handler: () => this.browserLiveTabs.list()
+    });
+
+    this.tools.register({
+      name: "pruneStaleLiveBrowserTabs",
+      description: "Remove stale cached browser tabs that have not been refreshed recently.",
+      handler: (args) => this.browserLiveTabs.pruneStale(readOptionalNumber(args.maxAgeMs, "maxAgeMs"))
     });
 
     this.tools.register({
