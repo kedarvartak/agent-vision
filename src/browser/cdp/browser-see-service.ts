@@ -1,8 +1,8 @@
 import type { Logger } from "../../logging/logger.js";
+import { BrowserTabContextService } from "./browser-tab-context-service.js";
 import { BrowserTabScreenshotService } from "./browser-tab-screenshot-service.js";
-import type { CaptureResolvedLiveBrowserTabScreenshotResult } from "./browser-tab-screenshot-service.js";
-import type { BrowserTabScreenshot } from "./types.js";
-import type { LiveBrowserTabCandidate, LiveBrowserTabResolution } from "./tab-resolution.js";
+import type { BrowserTabScreenshot, BrowserTabStructuredContext } from "./types.js";
+import type { LiveBrowserTabCandidate } from "./tab-resolution.js";
 
 export type BrowserSeeResult =
   | {
@@ -12,6 +12,7 @@ export type BrowserSeeResult =
       matchedCandidate: LiveBrowserTabCandidate;
       candidateCount: number;
       screenshot: BrowserTabScreenshot;
+      context: BrowserTabStructuredContext;
       message: string;
     }
   | {
@@ -22,55 +23,55 @@ export type BrowserSeeResult =
       message: string;
     };
 
-const toSeeResult = (
-  result: CaptureResolvedLiveBrowserTabScreenshotResult
-): BrowserSeeResult => {
-  if (result.status === "completed") {
-    return {
-      status: "completed",
-      query: result.query,
-      stage: "completed",
-      matchedCandidate: result.resolution.matchedCandidate,
-      candidateCount: result.resolution.candidateCount,
-      screenshot: result.screenshot,
-      message: `Captured browser tab \"${result.screenshot.title}\" through CDP.`
-    };
-  }
-
-  return {
-    status: result.status,
-    query: result.query,
-    stage: result.status === "ambiguous" ? "needs_disambiguation" : "not_found",
-    candidates: result.candidates,
-    message: result.message
-  };
-};
-
 export class BrowserSeeService {
   constructor(
     private readonly screenshots: BrowserTabScreenshotService,
+    private readonly contexts: BrowserTabContextService,
     private readonly logger: Logger
   ) {}
 
   async see(query?: string): Promise<BrowserSeeResult> {
-    const result = await this.screenshots.captureResolved(query);
-    const mapped = toSeeResult(result);
-
-    if (mapped.status === "completed") {
-      this.logger.info("Completed browser-first /see flow", {
-        query,
-        title: mapped.screenshot.title,
-        targetId: mapped.screenshot.targetId,
-        width: mapped.screenshot.width,
-        height: mapped.screenshot.height
-      });
-    } else {
+    const screenshotResult = await this.screenshots.captureResolved(query);
+    if (screenshotResult.status !== "completed") {
       this.logger.info("Browser-first /see did not complete immediately", {
         query,
-        status: mapped.status,
-        candidateCount: mapped.candidates.length
+        status: screenshotResult.status,
+        candidateCount: screenshotResult.candidates.length
       });
+
+      return {
+        status: screenshotResult.status,
+        query: screenshotResult.query,
+        stage: screenshotResult.status === "ambiguous" ? "needs_disambiguation" : "not_found",
+        candidates: screenshotResult.candidates,
+        message: screenshotResult.message
+      };
     }
+
+    const contextResult = await this.contexts.getResolvedContext(query);
+    if (contextResult.status !== "completed") {
+      throw new Error("Structured browser context could not be collected after screenshot capture completed");
+    }
+
+    const mapped: BrowserSeeResult = {
+      status: "completed",
+      query: screenshotResult.query,
+      stage: "completed",
+      matchedCandidate: screenshotResult.resolution.matchedCandidate,
+      candidateCount: screenshotResult.resolution.candidateCount,
+      screenshot: screenshotResult.screenshot,
+      context: contextResult.context,
+      message: `Captured browser tab \"${screenshotResult.screenshot.title}\" through CDP with structured page context.`
+    };
+
+    this.logger.info("Completed browser-first /see flow", {
+      query,
+      title: mapped.screenshot.title,
+      targetId: mapped.screenshot.targetId,
+      width: mapped.screenshot.width,
+      height: mapped.screenshot.height,
+      visibleTextLength: mapped.context.visibleTextLength
+    });
 
     return mapped;
   }

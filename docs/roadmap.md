@@ -12,6 +12,7 @@ Current implementation:
 - active-tab fallback and fuzzy tab resolution
 - real PNG screenshot capture from resolved tabs through CDP
 - high-level browser-first `/see` flow
+- structured browser context with visible text and page metadata
 
 ## Phase 1: CDP connection layer
 
@@ -55,10 +56,11 @@ Completed:
 
 ## Phase 6: structured browser context
 
-Goals:
-- add visible text extraction
-- add DOM or page metadata helpers
-- optionally add console and network diagnostics
+Completed:
+- add visible text extraction through `Runtime.evaluate`
+- add page metadata helpers such as page title, URL, language, content type, and viewport
+- expose a direct structured-context MCP tool
+- enrich the high-level `/see` result with structured page context alongside the screenshot
 
 ## Phase 7: hardening
 
@@ -67,3 +69,4 @@ Goals:
 - clearer connection errors
 - stale target cleanup
 - stable IDE-facing behavior
+- optional console and network diagnostics when they materially improve debugging

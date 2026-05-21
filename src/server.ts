@@ -1,6 +1,7 @@
 import { BrowserCdpDiscoveryService } from "./browser/cdp/browser-cdp-discovery-service.js";
 import { BrowserLiveTabService } from "./browser/cdp/browser-live-tab-service.js";
 import { BrowserSeeService } from "./browser/cdp/browser-see-service.js";
+import { BrowserTabContextService } from "./browser/cdp/browser-tab-context-service.js";
 import { BrowserTabResolutionService } from "./browser/cdp/browser-tab-resolution-service.js";
 import { BrowserTabScreenshotService } from "./browser/cdp/browser-tab-screenshot-service.js";
 import { ChromeCdpClient } from "./browser/cdp/chrome-cdp-client.js";
@@ -42,8 +43,13 @@ export class VisualContextServer {
     this.tabResolution,
     this.logger
   );
+  private readonly tabContext = new BrowserTabContextService(
+    this.tabResolution,
+    this.logger
+  );
   private readonly browserSee = new BrowserSeeService(
     this.tabScreenshots,
+    this.tabContext,
     this.logger
   );
   private readonly tools = new ToolRegistry(this.logger);
@@ -104,8 +110,14 @@ export class VisualContextServer {
     });
 
     this.tools.register({
+      name: "getResolvedBrowserTabContext",
+      description: "Collect structured page metadata and visible text from the resolved live browser tab through CDP.",
+      handler: (args) => this.tabContext.getResolvedContext(readOptionalString(args.query, "query"))
+    });
+
+    this.tools.register({
       name: "seeBrowserTabViaCdp",
-      description: "High-level browser-first /see flow: resolve a live tab and capture it through CDP.",
+      description: "High-level browser-first /see flow: resolve a live tab, capture it through CDP, and return structured page context.",
       handler: (args) => this.browserSee.see(readOptionalString(args.query, "query"))
     });
   }

@@ -39,6 +39,18 @@ Resolves the active or best matching tab for a `/see`-style query.
 
 Captures a real PNG screenshot from the resolved tab through CDP.
 
+### `getResolvedBrowserTabContext`
+
+Collects structured page metadata and visible text from the resolved tab through CDP.
+
+Returned context currently includes:
+- page title
+- page URL
+- document language
+- content type
+- visible text
+- viewport size and device pixel ratio
+
 ### `seeBrowserTabViaCdp`
 
 High-level browser-first `/see` flow.
@@ -52,7 +64,7 @@ Input:
 ```
 
 Outcomes:
-- `completed`: a tab was resolved and captured
+- `completed`: a tab was resolved, captured, and enriched with structured browser context
 - `ambiguous`: multiple tabs matched similarly
 - `not_found`: no tab matched
 

@@ -15,6 +15,9 @@ const main = async () => {
   const screenshot = await server.callTool("captureResolvedBrowserTabScreenshot", {
     query: "docs"
   });
+  const context = await server.callTool("getResolvedBrowserTabContext", {
+    query: "docs"
+  });
   const seeActive = await server.callTool("seeBrowserTabViaCdp");
   const seeQuery = await server.callTool("seeBrowserTabViaCdp", {
     query: "docs"
@@ -27,6 +30,7 @@ const main = async () => {
   console.log("resolved-active", JSON.stringify(resolvedActive, null, 2));
   console.log("resolved-query", JSON.stringify(resolvedQuery, null, 2));
   console.log("captured-screenshot", JSON.stringify(screenshot, null, 2));
+  console.log("resolved-context", JSON.stringify(context, null, 2));
   console.log("see-active", JSON.stringify(seeActive, null, 2));
   console.log("see-query", JSON.stringify(seeQuery, null, 2));
 };

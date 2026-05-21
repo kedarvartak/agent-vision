@@ -53,3 +53,23 @@ export type BrowserTabScreenshot = {
   capturedAt: string;
   backend: "cdp-page-capture";
 };
+
+export type BrowserTabStructuredContext = {
+  targetId: string;
+  title: string;
+  url?: string;
+  browserName?: string;
+  pageTitle?: string;
+  pageUrl?: string;
+  documentLanguage?: string;
+  contentType?: string;
+  visibleText: string;
+  visibleTextLength: number;
+  viewport?: {
+    width?: number;
+    height?: number;
+    devicePixelRatio?: number;
+  };
+  collectedAt: string;
+  backend: "cdp-runtime-evaluate";
+};
