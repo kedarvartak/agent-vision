@@ -1,5 +1,6 @@
 import { BrowserCdpDiscoveryService } from "./browser/cdp/browser-cdp-discovery-service.js";
 import { BrowserLiveTabService } from "./browser/cdp/browser-live-tab-service.js";
+import { BrowserTabResolutionService } from "./browser/cdp/browser-tab-resolution-service.js";
 import { ChromeCdpClient } from "./browser/cdp/chrome-cdp-client.js";
 import { LiveBrowserTabRegistry } from "./browser/cdp/live-browser-tab-registry.js";
 import { AppError } from "./errors/app-error.js";
@@ -29,6 +30,10 @@ export class VisualContextServer {
   private readonly browserLiveTabs = new BrowserLiveTabService(
     this.cdpDiscovery,
     this.liveTabs,
+    this.logger
+  );
+  private readonly tabResolution = new BrowserTabResolutionService(
+    this.browserLiveTabs,
     this.logger
   );
   private readonly tools = new ToolRegistry(this.logger);
@@ -74,6 +79,12 @@ export class VisualContextServer {
       name: "listLiveBrowserTabs",
       description: "List the current normalized live browser-tab model without re-querying Chrome.",
       handler: () => this.browserLiveTabs.list()
+    });
+
+    this.tools.register({
+      name: "resolveLiveBrowserTab",
+      description: "Resolve the active or best matching live browser tab for a /see-style query.",
+      handler: (args) => this.tabResolution.resolve(readOptionalString(args.query, "query"))
     });
   }
 }

@@ -9,6 +9,7 @@ Current implementation:
 - Chrome CDP connection status check
 - live browser tab discovery from `/json/version` and `/json/list`
 - normalized live browser-tab model with ordering heuristics
+- active-tab fallback and fuzzy tab resolution
 
 ## Phase 1: CDP connection layer
 
@@ -28,10 +29,11 @@ Completed:
 
 ## Phase 3: tab resolution
 
-Goals:
+Completed:
 - resolve `/see` with active-tab fallback
-- resolve `/see "tab name"` by title and URL matching
-- return candidate lists for ambiguous queries
+- resolve `/see "tab name"` by title and URL matching heuristics
+- return candidate lists for ambiguous or not-found queries
+- expose Phase 3 resolution MCP tool
 
 ## Phase 4: CDP screenshot capture
 
