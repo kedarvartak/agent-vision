@@ -18,6 +18,9 @@ type CdpCommandFailure = {
 
 type CdpResponse = CdpCommandSuccess | CdpCommandFailure;
 
+const isCdpCommandFailure = (response: CdpResponse): response is CdpCommandFailure =>
+  "error" in response;
+
 const waitForOpen = (socket: WebSocket): Promise<void> =>
   new Promise((resolve, reject) => {
     if (socket.readyState === WebSocket.OPEN) {
@@ -84,12 +87,12 @@ export class CdpWebSocketSession {
 
             cleanup();
 
-            if ("error" in parsed && parsed.error) {
+            if (isCdpCommandFailure(parsed) && parsed.error) {
               reject(new Error(parsed.error.message ?? `CDP command failed: ${method}`));
               return;
             }
 
-            resolve(parsed.result ?? {});
+            resolve("result" in parsed ? parsed.result ?? {} : {});
           } catch (error) {
             cleanup();
             reject(error);
