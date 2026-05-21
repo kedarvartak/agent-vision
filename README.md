@@ -1,10 +1,10 @@
 <div align="center">
   <h1>Agent Vision</h1>
+  ![Agent Vision Banner](./docs/banner.png)
   <p>
     <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-ES2022-3178C6?style=flat-square" />
     <img alt="Chrome CDP" src="https://img.shields.io/badge/Chrome-CDP-4285F4?style=flat-square" />
     <img alt="MCP" src="https://img.shields.io/badge/MCP-stdio-7C3AED?style=flat-square" />
-    <img alt="Codex" src="https://img.shields.io/badge/Codex-ready-111827?style=flat-square" />
     <img alt="License" src="https://img.shields.io/badge/License-MIT-22C55E?style=flat-square" />
   </p>
 </div>
