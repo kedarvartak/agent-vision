@@ -1,20 +1,60 @@
-# Browser-First Roadmap
+# CDP-First Browser Roadmap
 
-## Current scope
+## Current status
 
-The project now targets browser tab capture only.
+The old pushed-screenshot browser path has been removed.
+The codebase is now centered on a CDP-first browser architecture.
 
-Implemented pieces:
-- in-memory browser tab registry
-- browser tab snapshot registration MCP tool
-- browser tab listing MCP tool
-- `/see`-style capture by tab title via `seeBrowserTab`
-- in-memory capture session completion for browser results
+Current implementation:
+- Chrome CDP connection status check
+- live browser tab discovery from `/json/version` and `/json/list`
 
-## Next likely steps
+## Phase 1: CDP connection layer
 
-1. Build a real browser extension or local browser bridge.
-2. Push active-tab snapshots into `registerBrowserTabSnapshot`.
-3. Add richer tab matching and disambiguation UX.
-4. Optionally add DOM/text metadata alongside screenshot bytes.
-5. Optionally add support for multiple browsers.
+Completed:
+- connect to a Chrome remote debugging endpoint
+- fetch browser metadata
+- discover live page/tab targets
+- expose Phase 1 MCP tools
+
+## Phase 2: live browser tab model
+
+Goals:
+- normalize CDP targets into a stable browser-tab model
+- add active/recent ordering heuristics
+- prepare tab resolution by title
+
+## Phase 3: tab resolution
+
+Goals:
+- resolve `/see` with active-tab fallback
+- resolve `/see "tab name"` by title and URL matching
+- return candidate lists for ambiguous queries
+
+## Phase 4: CDP screenshot capture
+
+Goals:
+- attach to the selected tab through CDP
+- capture screenshot bytes on demand
+- return browser-first visual bundles
+
+## Phase 5: browser-first `/see`
+
+Goals:
+- complete `/see` directly from live CDP state
+- avoid extension push and avoid desktop capture flows entirely
+
+## Phase 6: structured browser context
+
+Goals:
+- add visible text extraction
+- add DOM or page metadata helpers
+- optionally add console and network diagnostics
+
+## Phase 7: hardening
+
+Goals:
+- reconnect logic
+- clearer connection errors
+- stale target cleanup
+- stable IDE-facing behavior
