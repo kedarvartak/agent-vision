@@ -44,7 +44,7 @@ type McpToolResult = {
 };
 
 const MCP_PROTOCOL_VERSION = "2025-03-26";
-const SERVER_NAME = "llm-vision-mcp";
+const SERVER_NAME = "agent-vision-mcp";
 const SERVER_VERSION = "0.1.0";
 const JSON_RPC_VERSION = "2.0";
 const JSON_PARSE_ERROR = -32700;

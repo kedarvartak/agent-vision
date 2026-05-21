@@ -14,7 +14,7 @@ npm run build
 Example:
 
 ```bash
-brave-browser --remote-debugging-port=9222 --user-data-dir=/tmp/llm-vision-cdp
+brave-browser --remote-debugging-port=9222 --user-data-dir=/tmp/agent-vision-cdp
 ```
 
 ## 3. Register it in Codex
@@ -22,7 +22,7 @@ brave-browser --remote-debugging-port=9222 --user-data-dir=/tmp/llm-vision-cdp
 Add this to `~/.codex/config.toml`:
 
 ```toml
-[mcp_servers.llm-vision]
+[mcp_servers.agent-vision]
 command = "node"
 args = ["/home/kedar/Desktop/Projects/llm_vision/dist/mcp-stdio.js"]
 ```
@@ -30,9 +30,9 @@ args = ["/home/kedar/Desktop/Projects/llm_vision/dist/mcp-stdio.js"]
 If you prefer to use the future npm-published executable later, the shape will stay the same and you can switch to something like:
 
 ```toml
-[mcp_servers.llm-vision]
+[mcp_servers.agent-vision]
 command = "npx"
-args = ["-y", "llm-vision-mcp"]
+args = ["-y", "agent-vision-mcp"]
 ```
 
 ## 4. Restart Codex
@@ -65,7 +65,7 @@ Once Codex sees the MCP server:
 Examples:
 
 ```text
-Use the llm-vision MCP server to list my live browser tabs.
-Use the llm-vision MCP server to see the active browser tab.
-Use the llm-vision MCP server to inspect the tab matching "docs".
+Use the agent-vision MCP server to list my live browser tabs.
+Use the agent-vision MCP server to see the active browser tab.
+Use the agent-vision MCP server to inspect the tab matching "docs".
 ```

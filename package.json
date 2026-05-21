@@ -1,10 +1,10 @@
 {
-  "name": "llm-vision-mcp",
+  "name": "agent-vision-mcp",
   "version": "0.1.0",
   "type": "module",
-  "description": "CDP-first browser visual context MCP server for Codex and other MCP clients.",
+  "description": "Browser-first MCP server that gives agents visual access to live tabs through Chrome DevTools Protocol.",
   "bin": {
-    "llm-vision-mcp": "dist/mcp-stdio.js"
+    "agent-vision-mcp": "dist/mcp-stdio.js"
   },
   "main": "dist/mcp-stdio.js",
   "exports": {
@@ -23,7 +23,8 @@
     "codex",
     "chrome-devtools-protocol",
     "browser",
-    "vision"
+    "vision",
+    "agent"
   ],
   "license": "MIT",
   "dependencies": {
