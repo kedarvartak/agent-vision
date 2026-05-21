@@ -1,6 +1,8 @@
 <div align="center">
   <h1>Agent Vision</h1>
-  ![Agent Vision Banner](./docs/banner.png)
+  <p align="center">
+  <img src="./assets/banner.png" width="800" />
+  </p>
   <p>
     <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-ES2022-3178C6?style=flat-square" />
     <img alt="Chrome CDP" src="https://img.shields.io/badge/Chrome-CDP-4285F4?style=flat-square" />
