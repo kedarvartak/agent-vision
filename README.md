@@ -8,6 +8,9 @@
     <img alt="Chrome CDP" src="https://img.shields.io/badge/Chrome-CDP-4285F4?style=flat-square" />
     <img alt="MCP" src="https://img.shields.io/badge/MCP-stdio-7C3AED?style=flat-square" />
     <img alt="License" src="https://img.shields.io/badge/License-MIT-22C55E?style=flat-square" />
+    <a href="https://www.npmjs.com/package/agent-vision-mcp">
+    <img src="https://img.shields.io/npm/v/agent-vision-mcp" />
+  </a>
   </p>
 </div>
 
