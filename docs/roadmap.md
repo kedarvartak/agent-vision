@@ -8,6 +8,7 @@ The codebase is now centered on a CDP-first browser architecture.
 Current implementation:
 - Chrome CDP connection status check
 - live browser tab discovery from `/json/version` and `/json/list`
+- normalized live browser-tab model with ordering heuristics
 
 ## Phase 1: CDP connection layer
 
@@ -19,10 +20,11 @@ Completed:
 
 ## Phase 2: live browser tab model
 
-Goals:
+Completed:
 - normalize CDP targets into a stable browser-tab model
-- add active/recent ordering heuristics
-- prepare tab resolution by title
+- add attached/first-tab ordering heuristics
+- preserve first-seen and last-seen timestamps
+- expose refresh and cached-list MCP tools
 
 ## Phase 3: tab resolution
 

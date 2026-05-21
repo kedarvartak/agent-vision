@@ -1,5 +1,7 @@
 import { BrowserCdpDiscoveryService } from "./browser/cdp/browser-cdp-discovery-service.js";
+import { BrowserLiveTabService } from "./browser/cdp/browser-live-tab-service.js";
 import { ChromeCdpClient } from "./browser/cdp/chrome-cdp-client.js";
+import { LiveBrowserTabRegistry } from "./browser/cdp/live-browser-tab-registry.js";
 import { AppError } from "./errors/app-error.js";
 import { ConsoleLogger } from "./logging/logger.js";
 import { ToolRegistry } from "./mcp/tool-registry.js";
@@ -23,6 +25,12 @@ export class VisualContextServer {
   public readonly logger = new ConsoleLogger("visual-context-server");
   private readonly cdpClient = new ChromeCdpClient(this.logger);
   private readonly cdpDiscovery = new BrowserCdpDiscoveryService(this.cdpClient, this.logger);
+  private readonly liveTabs = new LiveBrowserTabRegistry(this.logger);
+  private readonly browserLiveTabs = new BrowserLiveTabService(
+    this.cdpDiscovery,
+    this.liveTabs,
+    this.logger
+  );
   private readonly tools = new ToolRegistry(this.logger);
 
   constructor() {
@@ -54,6 +62,18 @@ export class VisualContextServer {
       name: "discoverBrowserTabsViaCdp",
       description: "List live browser tabs from a Chrome DevTools Protocol endpoint.",
       handler: (args) => this.cdpDiscovery.discoverTabs(readOptionalEndpoint(args))
+    });
+
+    this.tools.register({
+      name: "refreshLiveBrowserTabs",
+      description: "Refresh the normalized live browser-tab model from a Chrome DevTools Protocol endpoint.",
+      handler: (args) => this.browserLiveTabs.refresh(readOptionalEndpoint(args))
+    });
+
+    this.tools.register({
+      name: "listLiveBrowserTabs",
+      description: "List the current normalized live browser-tab model without re-querying Chrome.",
+      handler: () => this.browserLiveTabs.list()
     });
   }
 }
