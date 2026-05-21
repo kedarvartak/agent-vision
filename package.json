@@ -36,6 +36,7 @@
     "url": "https://github.com/kedarvartak/agent-vision/issues"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.17.5",
     "ws": "^8.18.0"
   },
   "devDependencies": {

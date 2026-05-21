@@ -1,7 +1,20 @@
 import { AppError, isAppError } from "../errors/app-error.js";
 import type { Logger } from "../logging/logger.js";
 
-export type JsonSchema = Record<string, unknown>;
+export type JsonSchemaProperty = {
+  type: string;
+  description?: string;
+  [key: string]: unknown;
+};
+
+export type JsonSchema = {
+  type: "object";
+  properties?: Record<string, JsonSchemaProperty>;
+  required?: string[];
+  additionalProperties?: boolean;
+  description?: string;
+  [key: string]: unknown;
+};
 
 export type ToolHandler = (args: Record<string, unknown>) => Promise<unknown> | unknown;
 

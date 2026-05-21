@@ -8,14 +8,14 @@ import { ChromeCdpClient } from "./browser/cdp/chrome-cdp-client.js";
 import { LiveBrowserTabRegistry } from "./browser/cdp/live-browser-tab-registry.js";
 import { AppError } from "./errors/app-error.js";
 import { ConsoleLogger } from "./logging/logger.js";
-import { ToolRegistry, type JsonSchema, type ToolAnnotations } from "./mcp/tool-registry.js";
+import { ToolRegistry, type JsonSchema, type JsonSchemaProperty, type ToolAnnotations } from "./mcp/tool-registry.js";
 
-const STRING_SCHEMA = (description: string): JsonSchema => ({
+const STRING_SCHEMA = (description: string): JsonSchemaProperty => ({
   type: "string",
   description
 });
 
-const NUMBER_SCHEMA = (description: string): JsonSchema => ({
+const NUMBER_SCHEMA = (description: string): JsonSchemaProperty => ({
   type: "number",
   description
 });
