@@ -1,6 +1,7 @@
 import { BrowserCdpDiscoveryService } from "./browser/cdp/browser-cdp-discovery-service.js";
 import { BrowserLiveTabService } from "./browser/cdp/browser-live-tab-service.js";
 import { BrowserTabResolutionService } from "./browser/cdp/browser-tab-resolution-service.js";
+import { BrowserTabScreenshotService } from "./browser/cdp/browser-tab-screenshot-service.js";
 import { ChromeCdpClient } from "./browser/cdp/chrome-cdp-client.js";
 import { LiveBrowserTabRegistry } from "./browser/cdp/live-browser-tab-registry.js";
 import { AppError } from "./errors/app-error.js";
@@ -34,6 +35,10 @@ export class VisualContextServer {
   );
   private readonly tabResolution = new BrowserTabResolutionService(
     this.browserLiveTabs,
+    this.logger
+  );
+  private readonly tabScreenshots = new BrowserTabScreenshotService(
+    this.tabResolution,
     this.logger
   );
   private readonly tools = new ToolRegistry(this.logger);
@@ -85,6 +90,12 @@ export class VisualContextServer {
       name: "resolveLiveBrowserTab",
       description: "Resolve the active or best matching live browser tab for a /see-style query.",
       handler: (args) => this.tabResolution.resolve(readOptionalString(args.query, "query"))
+    });
+
+    this.tools.register({
+      name: "captureResolvedBrowserTabScreenshot",
+      description: "Capture a real PNG screenshot from the resolved live browser tab through CDP.",
+      handler: (args) => this.tabScreenshots.captureResolved(readOptionalString(args.query, "query"))
     });
   }
 }

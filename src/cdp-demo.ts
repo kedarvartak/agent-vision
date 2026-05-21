@@ -12,6 +12,9 @@ const main = async () => {
   const resolvedQuery = await server.callTool("resolveLiveBrowserTab", {
     query: "docs"
   });
+  const screenshot = await server.callTool("captureResolvedBrowserTabScreenshot", {
+    query: "docs"
+  });
 
   console.log("cdp-status", JSON.stringify(status, null, 2));
   console.log("cdp-tabs", JSON.stringify(rawTabs, null, 2));
@@ -19,6 +22,7 @@ const main = async () => {
   console.log("cached-live-browser-tabs", JSON.stringify(cachedLiveTabs, null, 2));
   console.log("resolved-active", JSON.stringify(resolvedActive, null, 2));
   console.log("resolved-query", JSON.stringify(resolvedQuery, null, 2));
+  console.log("captured-screenshot", JSON.stringify(screenshot, null, 2));
 };
 
 void main().catch((error) => {

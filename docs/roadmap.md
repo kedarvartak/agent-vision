@@ -10,6 +10,7 @@ Current implementation:
 - live browser tab discovery from `/json/version` and `/json/list`
 - normalized live browser-tab model with ordering heuristics
 - active-tab fallback and fuzzy tab resolution
+- real PNG screenshot capture from resolved tabs through CDP
 
 ## Phase 1: CDP connection layer
 
@@ -37,16 +38,18 @@ Completed:
 
 ## Phase 4: CDP screenshot capture
 
-Goals:
-- attach to the selected tab through CDP
-- capture screenshot bytes on demand
-- return browser-first visual bundles
+Completed:
+- attach to the selected tab through its CDP websocket
+- capture PNG screenshot bytes on demand
+- return browser-first screenshot payloads with width, height, and byte length
+- expose Phase 4 screenshot capture MCP tool
 
 ## Phase 5: browser-first `/see`
 
 Goals:
 - complete `/see` directly from live CDP state
 - avoid extension push and avoid desktop capture flows entirely
+- return a single high-level browser-first result instead of separate resolution and screenshot steps
 
 ## Phase 6: structured browser context
 

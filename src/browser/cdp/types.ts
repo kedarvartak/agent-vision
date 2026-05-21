@@ -39,3 +39,17 @@ export type CdpTabDiscoveryResult = {
   protocolVersion?: string;
   tabs: CdpDiscoveredTarget[];
 };
+
+export type BrowserTabScreenshot = {
+  targetId: string;
+  title: string;
+  url?: string;
+  browserName?: string;
+  mimeType: "image/png";
+  bytesBase64: string;
+  width: number;
+  height: number;
+  byteLength: number;
+  capturedAt: string;
+  backend: "cdp-page-capture";
+};
