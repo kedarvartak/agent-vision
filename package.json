@@ -1,14 +1,31 @@
 {
-  "name": "llm-vision",
+  "name": "llm-vision-mcp",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
-  "description": "CDP-first browser visual context MCP skeleton in TypeScript.",
+  "description": "CDP-first browser visual context MCP server for Codex and other MCP clients.",
+  "bin": {
+    "llm-vision-mcp": "dist/mcp-stdio.js"
+  },
+  "main": "dist/mcp-stdio.js",
+  "exports": {
+    ".": "./dist/mcp-stdio.js"
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/index.js",
+    "start": "node dist/mcp-stdio.js",
     "demo-cdp": "node dist/cdp-demo.js"
   },
+  "keywords": [
+    "mcp",
+    "codex",
+    "chrome-devtools-protocol",
+    "browser",
+    "vision"
+  ],
+  "license": "MIT",
   "dependencies": {
     "ws": "^8.18.0"
   },

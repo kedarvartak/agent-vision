@@ -1,11 +1,19 @@
 import { AppError, isAppError } from "../errors/app-error.js";
 import type { Logger } from "../logging/logger.js";
 
+export type JsonSchema = Record<string, unknown>;
+
 export type ToolHandler = (args: Record<string, unknown>) => Promise<unknown> | unknown;
+
+export type ToolAnnotations = {
+  readOnlyHint?: boolean;
+};
 
 export type ToolDefinition = {
   name: string;
   description: string;
+  inputSchema?: JsonSchema;
+  annotations?: ToolAnnotations;
   handler: ToolHandler;
 };
 
